@@ -1,7 +1,7 @@
 ---
-title: "Authenticate Requests to the DEC API"
+title: "DEC API Authentication: JWT, Google OAuth, and Facebook"
 sidebarTitle: "Authentication"
-description: "How to obtain a JWT from DEC's login, Google OAuth, or Facebook auth endpoints, and how to pass it in the Authorization header on every protected API call."
+description: "How to obtain a DEC JWT from the login, Google, or Facebook endpoints, and how to attach it in the Authorization header on every protected call."
 ---
 
 DEC uses **JSON Web Tokens (JWT)** for session management across its mobile and web clients. Every protected endpoint verifies the token found in the `Authorization: Bearer <token>` header before processing the request. Tokens are signed with the `JWT_SECRET` environment variable and are issued with a **30-day expiry** (`expiresIn: '30d'`). A token can be effectively invalidated by deleting the user account it was issued for.

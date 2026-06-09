@@ -1,7 +1,7 @@
 ---
-title: "User Registration and Authentication Endpoints"
+title: "DEC User Registration and Authentication API Reference"
 sidebarTitle: "Register & Auth"
-description: "API reference for POST /api/users/register, /verify-code, /login, /auth/google, /auth/facebook — create accounts and obtain JWTs in DEC."
+description: "Create DEC accounts, verify email codes, and sign in with credentials, Google, or Facebook. All login endpoints return a 30-day JWT for protected routes."
 ---
 
 DEC provides six authentication endpoints: email-based registration with a verification code, credential login, and OAuth sign-in via Google and Facebook. All successful login responses return a **JWT** valid for 30 days that must be included in the `Authorization` header for protected routes.

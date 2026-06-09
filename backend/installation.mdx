@@ -1,7 +1,7 @@
 ---
-title: "Install and Run the DEC Backend Server"
+title: "Install, Configure, and Start the DEC Backend Server"
 sidebarTitle: "Installation"
-description: "Install Node.js dependencies, connect to MongoDB, configure Cloudinary and SMTP, and start the DEC Express API server on port 8089."
+description: "Install Node.js dependencies, connect MongoDB, configure Cloudinary and email credentials, and run the DEC Express API server on port 8089."
 ---
 
 The DEC backend is a REST API built with **Node.js** and **Express** that powers the entire DEC (Detector de Enfermedades en Cafetales) platform. It runs on **port 8089** by default and provides JWT-based authentication, persistent data storage via **MongoDB**, AI-driven disease detection history, and **Cloudinary** image storage for plant photos. All client requests — from the React Native mobile app and the web admin dashboard — are served through this API.
@@ -13,7 +13,7 @@ Before installing, ensure you have the following available:
 - **Node.js v18+** and npm — the runtime for the Express server
 - **MongoDB** — a local instance (`mongod`) or a hosted [MongoDB Atlas](https://www.mongodb.com/atlas) cluster
 - **Cloudinary account** — used to store and serve plant detection images (JPG/PNG, up to 10 MB)
-- **SMTP credentials** — used by Nodemailer to send verification codes and password-reset emails (e.g. a Gmail account with an App Password)
+- **Gmail credentials** — a Gmail address and App Password used by Nodemailer to deliver contact-form messages; Resend handles verification and password-reset emails separately
 - **Google Cloud Console credentials** — a Google OAuth 2.0 Client ID for Google Sign-In
 - **Meta Developer credentials** — a Facebook App ID for Facebook Login
 
@@ -60,17 +60,15 @@ Before installing, ensure you have the following available:
     GOOGLE_APP_CLIENT_ID=your_google_app_client_id
 
     # Facebook Login
-    FACEBOOK_APP_ID=your_facebook_app_id
     FACEBOOK_APP_SECRET=your_facebook_app_secret
 
-    # Resend — transactional email service
+    # Resend — transactional email service for verification and recovery emails
     RESEND_API_KEY=your_resend_api_key
     FROM_EMAIL=no-reply@your-verified-domain.com
 
-    # SMTP — fallback or additional email transport
-    SMTP_HOST=smtp.gmail.com
-    SMTP_USER=your_email@gmail.com
-    SMTP_PASS=your_app_specific_password
+    # Gmail / Nodemailer — used for the contact-us form
+    EMAIL_USER=your_email@gmail.com
+    EMAIL_PASS=your_app_specific_password
 
     # Server port (optional — defaults to 8089)
     PORT=8089

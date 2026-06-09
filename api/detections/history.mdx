@@ -1,7 +1,7 @@
 ---
-title: "Detection History Endpoints for the DEC API"
+title: "DEC Detection History and Delete Endpoints Reference"
 sidebarTitle: "History"
-description: "GET /api/detections/history returns the current user's detection records. DELETE endpoints remove individual or all detections. All routes require JWT."
+description: "Fetch, paginate, and delete the current user's disease detection history in DEC. Supports removing a single record or clearing the full history."
 ---
 
 The detection history endpoints let the mobile app fetch, display, and manage the current user's saved detections. Records are scoped strictly to the authenticated user — no user can read or delete another user's data. The history list supports server-side pagination so large datasets can be loaded incrementally.

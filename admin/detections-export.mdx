@@ -1,5 +1,5 @@
 ---
-title: "Review Detections and Export Datasets in DEC"
+title: "Review Detections and Export Datasets in DEC Admin"
 sidebarTitle: "Detections & Export"
 description: "Approve or reject user detections from the admin panel, then export the approved dataset as a ZIP archive for model retraining using the DEC export API."
 ---
@@ -88,13 +88,13 @@ The combination of `metadata.csv` annotations and the `images/` folder is suffic
 
 ## Stats API
 
-Three additional read-only endpoints feed the Dashboard tab KPI tiles and charts. All three require the `onlyAdmin` middleware.
+Three additional read-only endpoints are available under `/api/stats/`. All three require the `onlyAdmin` middleware and can be used to build custom dashboards or external integrations.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/stats/kpis` | Returns `totalUsers`, `totalDetections`, `totalPathologies`, and `avgConfidence` (mean across all detections) |
 | `GET` | `/api/stats/incidence` | Returns detections grouped by disease over time. Accepts `startDate`, `endDate`, and `groupBy` (`day` \| `week` \| `month`) query parameters. Data is formatted for direct use with Recharts. |
-| `GET` | `/api/stats/map` | Returns an array of detection coordinates with `lat`, `lng`, `disease`, `confidence`, and `date` fields for the Leaflet heatmap. Accepts `startDate` and `endDate` query parameters. Defaults to the last 30 days when no dates are provided. |
+| `GET` | `/api/stats/map` | Returns an array of detection coordinates with `lat`, `lng`, `disease`, `confidence`, and `date` fields. Accepts `startDate` and `endDate` query parameters. Defaults to the last 30 days when no dates are provided. |
 
 **Example KPI response:**
 

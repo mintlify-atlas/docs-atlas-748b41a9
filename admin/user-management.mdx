@@ -1,7 +1,7 @@
 ---
-title: "Manage Users from the DEC Admin Dashboard"
+title: "DEC Admin Dashboard: Managing and Moderating Users"
 sidebarTitle: "User Management"
-description: "View, edit, ban, change roles, and delete user accounts from the DEC admin dashboard. Covers the Users tab UI and the underlying admin API endpoints."
+description: "View, ban, change roles, and delete user accounts from the DEC admin dashboard. Covers the Users tab UI and the underlying admin API endpoints."
 ---
 
 The **Users** tab in the DEC admin dashboard provides full lifecycle management of every registered account. It calls the admin REST API directly — all mutations are reflected immediately in MongoDB and the UI updates optimistically in real time. Roles available in the system are `user`, `tecnico`, and `admin`.
@@ -10,7 +10,7 @@ The **Users** tab in the DEC admin dashboard provides full lifecycle management 
 
 <CardGroup cols={2}>
   <Card title="User table" icon="table">
-    Displays every account returned by `GET /api/admin/get-users` in a paginated table (10 rows per page). Each row shows the user's **avatar initial**, **display name**, **email**, **role badge**, and an active/banned status indicator. Clicking a row opens a detail view that lists all detections associated with that account.
+    Displays every account returned by `GET /api/admin/get-users` in a paginated table (10 rows per page). Each row shows the user's **avatar initial**, **display name**, **email**, **role badge**, and an active/banned status indicator. Clicking the eye icon opens a detail view that lists all detections associated with that account.
   </Card>
   <Card title="Search and filter" icon="search">
     A live search bar filters by **name** or **email** as you type. Additional filter strips let you narrow by role (`All`, `User`, `Tecnico`, `Admin`) and by status (`All`, `Active`, `Banned`). Results update instantly without a server round-trip.
@@ -21,17 +21,17 @@ The **Users** tab in the DEC admin dashboard provides full lifecycle management 
   <Card title="Change role" icon="shield">
     Tapping the role badge on any row opens a dropdown with the other available roles (`user`, `tecnico`, `admin`). Selecting one calls `PATCH /api/admin/change-role/:id` with `{ role }`. An admin cannot demote themselves.
   </Card>
-  <Card title="Edit user details" icon="edit">
-    `PUT /api/admin/edit-user/:id` accepts `{ name, email }`. The server validates the name against a Spanish-language name regex and the email against a `@gmail.com/.co` pattern before saving.
-  </Card>
   <Card title="Delete user" icon="trash">
-    The red trash icon triggers a confirmation modal. On confirmation, `DELETE /api/admin/delete-user/:id` permanently removes the account from MongoDB. Delete actions are blocked on admin accounts — the trash icon is hidden for them.
+    The red trash icon triggers a confirmation modal. On confirmation, `DELETE /api/admin/delete-user/:id` permanently removes the account from MongoDB. Delete actions are blocked on admin accounts — the trash icon is hidden for those rows.
   </Card>
   <Card title="Export user list" icon="download">
     The **Export CSV** button in the header serialises the current filtered view into a CSV with columns `ID`, `Name`, `Email`, `Role`, `Status`, `Registration Date`, and `Last Sync`, then triggers a browser download. No server call is needed.
   </Card>
   <Card title="Send custom email" icon="mail">
     The envelope icon on each row opens an email composer modal. Submitting it calls `POST /api/admin/send-email` with `{ subject, message, emails: [user.email] }`. Email delivery is handled by **Resend** on the backend.
+  </Card>
+  <Card title="View user messages" icon="message-circle">
+    The message-circle icon on each row opens a modal that loads the user's in-app messages. Admins can read and permanently delete individual messages from within the modal.
   </Card>
 </CardGroup>
 

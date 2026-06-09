@@ -1,7 +1,7 @@
 ---
-title: "Authentication System in the DEC Backend"
+title: "DEC Backend Authentication: JWT, OAuth and Recovery"
 sidebarTitle: "Authentication"
-description: "How DEC implements JWT-based session management, email/password registration with code verification, Google OAuth, Facebook Login, and role-based access control."
+description: "How DEC implements JWT session management, two-step email registration, Google OAuth, Facebook Login, password recovery, and role-based access control."
 ---
 
 DEC supports four distinct authentication paths: **email/password registration** with two-step email verification, **Google OAuth**, **Facebook Login**, and **password recovery**. All four paths ultimately issue a signed **JSON Web Token (JWT)** that the client stores and attaches to every subsequent authenticated request. Token validation is handled centrally by the `verifyToken` middleware in `middlewares/auth.js`, keeping all route handlers free of authentication logic.
@@ -226,10 +226,10 @@ Users who have forgotten their password can request a recovery code via email. T
 
 <Steps>
   <Step title="Request a recovery code">
-    Send the user's registered email to `POST /api/recover/`. The server looks up the account, generates a 6-digit code, stores it with a **15-minute** expiry (`codeExpiration`), and emails it via Resend.
+    Send the user's registered email to `POST /api/recover/req-code`. The server looks up the account, generates a 6-digit code, stores it with a **15-minute** expiry (`codeExpiration`), and emails it via Resend.
 
     ```http
-    POST /api/recover/
+    POST /api/recover/req-code
     Content-Type: application/json
 
     {
@@ -248,10 +248,10 @@ Users who have forgotten their password can request a recovery code via email. T
   </Step>
 
   <Step title="Submit the code and new password">
-    Once the user has the code from their inbox, submit the email, code, and new password to `POST /api/recover/change-password`. The server validates the code, hashes the new password with bcrypt, saves it, clears the recovery fields, and sends a confirmation email.
+    Once the user has the code from their inbox, submit the email, code, and new password to `POST /api/recover/change-pass`. The server validates the code, hashes the new password with bcrypt, saves it, clears the recovery fields, and sends a confirmation email.
 
     ```http
-    POST /api/recover/change-password
+    POST /api/recover/change-pass
     Content-Type: application/json
 
     {

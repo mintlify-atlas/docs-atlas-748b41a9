@@ -1,5 +1,5 @@
 ---
-title: "Install and Run the DEC Mobile App with Expo"
+title: "DEC Mobile App Installation: Expo Setup and Scripts"
 sidebarTitle: "Installation"
 description: "Install Expo dependencies, set up Google OAuth and API URL environment variables, and run DEC on iOS, Android, or a web browser using Expo CLI."
 ---
@@ -48,7 +48,7 @@ The DEC mobile app is built with **React Native + Expo** and runs on iOS, Androi
 
     - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` — the Web Client ID from your Google Cloud project; used by `GoogleSignin.configure()` in `AuthContext.js`.
     - `EXPO_PUBLIC_GOOGLE_APP_CLIENT_ID` — the Android/iOS Client ID for native Google Sign-In.
-    - `EXPO_PUBLIC_API_URL` — base URL of the DEC backend API. The internal Axios instance appends `/api/` to this value.
+    - `EXPO_PUBLIC_API_URL` — base URL of the DEC backend API (no trailing slash). The current `src/api/api.js` Axios instance sets its `baseURL` to `http://<host>:8089/api/`; update that constant when deploying to a different host or port.
   </Step>
 
   <Step title="Start the Expo development server">
@@ -103,12 +103,26 @@ The following scripts are defined in `package.json`:
 
 For production-ready binaries submitted to the App Store or Google Play, use **Expo Application Services (EAS) Build**. The project is pre-configured with EAS project ID `03e2f248-6cd0-4b8c-a177-41660d5ee325` in `app.json`.
 
-```bash
-# Build for Android (APK / AAB)
-eas build --platform android
+The `eas.json` file defines three build profiles:
 
-# Build for iOS (IPA)
-eas build --platform ios
+| Profile | Description |
+|---------|-------------|
+| `development` | Development client build, distributed internally (`developmentClient: true`) |
+| `preview` | Android APK build for internal testing |
+| `production` | Android APK build with `environment: "production"` for store release |
+
+```bash
+# Internal development build
+eas build --platform android --profile development
+
+# Preview APK for QA testing
+eas build --platform android --profile preview
+
+# Production build for Android
+eas build --platform android --profile production
+
+# Production build for iOS
+eas build --platform ios --profile production
 ```
 
 The app bundles are identified as `com.decapp.app` on both iOS (`bundleIdentifier`) and Android (`package`). Make sure you have an Expo account and are logged in with `eas login` before running these commands.

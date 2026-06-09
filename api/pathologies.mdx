@@ -1,7 +1,7 @@
 ---
-title: "GET /api/pathologies — Coffee Disease Catalog"
+title: "Coffee Disease Catalog — GET /api/pathologies in DEC"
 sidebarTitle: "Pathologies"
-description: "Retrieve the list of supported coffee plant diseases from the DEC pathology catalog. Returns name, description, treatment, alert flag, product recommendations, and a reference image URL. Requires JWT."
+description: "Retrieve coffee disease records from the DEC catalog: name, description, treatment, recommendations, and image URL. Requires a valid JWT."
 ---
 
 The pathology catalog is the database of coffee diseases that DEC can detect and diagnose. Each pathology record maps to an output class produced by the on-device TensorFlow Lite model (YOLOv11-based) and provides agronomic guidance displayed to the farmer after a detection. Records are stored in the `pathologies` MongoDB collection and managed by admins via the admin panel.
@@ -34,10 +34,6 @@ Array of pathology objects.
 
 <ResponseField name="[].treatment" type="string">
   General treatment recommendation for managing the disease.
-</ResponseField>
-
-<ResponseField name="[].alert" type="boolean">
-  When `true`, the admin panel flags this pathology as requiring special attention or elevated priority in the dashboard.
 </ResponseField>
 
 <ResponseField name="[].imageUrl" type="string">
@@ -86,7 +82,6 @@ curl -X GET http://localhost:8089/api/pathologies/ \
     "name": "Roya",
     "description": "La roya del cafeto (Hemileia vastatrix) es el hongo más destructivo en los cultivos de café. Se manifiesta con pústulas de color naranja en el envés de las hojas, provocando defoliación severa y reducción del rendimiento.",
     "treatment": "Aplicar fungicidas sistémicos a base de triazoles o estreptomicinas preventivamente. Aumentar la densidad de siembra de variedades resistentes como Castillo o Colombia.",
-    "alert": true,
     "imageUrl": "https://res.cloudinary.com/dec-app/image/upload/v1714000000/pathologies/roya.jpg",
     "recommendations": [
       {
@@ -105,7 +100,6 @@ curl -X GET http://localhost:8089/api/pathologies/ \
     "name": "Ojo de Gallo",
     "description": "Causada por el hongo Mycena citricolor. Produce lesiones circulares de color café claro con halo amarillo en las hojas, llevando a la caída prematura del follaje.",
     "treatment": "Realizar podas de saneamiento y aplicar fungicidas cúpricos en épocas de alta humedad. Mejorar la aireación del cultivo.",
-    "alert": false,
     "imageUrl": "",
     "recommendations": []
   }

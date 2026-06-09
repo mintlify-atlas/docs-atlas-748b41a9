@@ -1,5 +1,5 @@
 ---
-title: "DEC System Architecture and Component Overview"
+title: "DEC Architecture: Backend, Mobile Client, and AI Model"
 sidebarTitle: "Architecture"
 description: "How DEC's backend API, React Native mobile client, TensorFlow Lite AI model, SQLite local store, and MongoDB sync layer connect and interact at runtime."
 ---
@@ -36,7 +36,7 @@ graph TD
     CAM -->|"capture image"| TFL
     TFL -->|"detection result"| SQ
     SQ --> SYNC
-    SYNC -->|"POST /api/detections"| API
+    SYNC -->|"POST /api/detections/save"| API
     CTRL -->|"read / write"| MONGO
     CTRL -->|"upload image"| CDN
 
@@ -48,13 +48,13 @@ graph TD
 
 <CardGroup cols={2}>
   <Card title="Backend API" icon="server" href="/quickstart#step-2-configure-the-backend">
-    An **Express v5** server (`backend/server.js`) running on port **8089**, written as ESM modules. It exposes REST endpoints under `/api/` for authentication, detections, pathologies, users, statistics, notifications, treatments, and messages. MongoDB is accessed through **Mongoose v9** schemas. All protected routes are guarded by a JWT middleware that validates `Authorization: Bearer <token>` headers. Images are uploaded to **Cloudinary** via Multer middleware before the detection record is persisted.
+    An **Express v5** server (`backend/server.js`) running on port **8089**, written as ESM modules. It exposes REST endpoints under `/api/` for authentication, detections, pathologies, users, statistics, notifications, treatments, messages, password recovery, and admin operations. MongoDB is accessed through **Mongoose v9** schemas. All protected routes are guarded by a JWT middleware that validates `Authorization: Bearer <token>` headers. Images are uploaded to **Cloudinary** via Multer middleware before the detection record is persisted.
   </Card>
   <Card title="Mobile Client" icon="mobile-screen-button" href="/quickstart#step-4-open-on-your-platform">
     A **React Native 0.83 + Expo SDK 55** application. State is managed via **Context API** (auth context stores the JWT and user profile). Navigation is stack-based using **React Navigation v7**. On mobile, JWT tokens are stored securely in **Expo SecureStore**; on web, `sessionStorage` is used. The `axios` HTTP client includes request interceptors that attach the token to every outbound request and response interceptors that clear the session on `401` responses.
   </Card>
   <Card title="Admin Dashboard" icon="gauge-high" href="/introduction#what-dec-does">
-    Web-only screens (`LandingPage.web.jsx`, `AdminDashboard.web.jsx`, `LoginAdmin.web.jsx`) rendered via **react-native-web**. The dashboard consumes `/api/stats/kpis`, `/api/stats/incidence`, and `/api/stats/map` to render KPI counters, incidence trend charts (built with **Recharts**), and an interactive heat map (built with **React Leaflet**). Administrators can manage users, view detection logs, and export data as ZIP archives via `/api/export/history`.
+    Web-only screens (`LandingPage.web.jsx`, `AdminDashboard.web.jsx`, `LoginAdmin.web.jsx`) rendered via **react-native-web**. The dashboard consumes `/api/stats/kpis`, `/api/stats/incidence`, and `/api/stats/map` to render KPI counters, incidence trend charts (built with **Recharts**), and an interactive heat map (built with **React Leaflet**). Administrators can manage users, view detection logs, and export data as ZIP archives via `/api/admin/export/start`.
   </Card>
   <Card title="Data Layer" icon="database" href="/architecture#key-dependencies">
     **SQLite** (`expo-sqlite`) serves as the local-first store on the device, written immediately after each detection so results are available offline. A background sync service reads un-synced records and pushes them to the **MongoDB** backend via the REST API. **MongoDB** (accessed through Mongoose) is the single source of truth for the admin dashboard and cross-device history. Detection images are stored on **Cloudinary** and referenced by URL in both SQLite and MongoDB documents.
@@ -79,7 +79,7 @@ The following steps trace a complete detection event from user interaction to ad
     The detection result — including the pathology ID, confidence score, severity, and a local image URI — is written to the device's **SQLite** database via `expo-sqlite`. This guarantees the result is immediately accessible in the history screen even if the device is offline. The record is flagged as `synced: false`.
   </Step>
   <Step title="Result synced to MongoDB">
-    When a network connection is available, the sync service reads all `synced: false` records from SQLite, uploads the image to **Cloudinary** (returning a permanent CDN URL), and sends a `POST /api/detections` request to the backend. The backend controller persists the detection document to **MongoDB** and returns the assigned `_id`. SQLite marks the record as `synced: true` and stores the remote `_id` for future reference.
+    When a network connection is available, the sync service reads all `synced: false` records from SQLite, uploads the image to **Cloudinary** (returning a permanent CDN URL), and sends a `POST /api/detections/save` request to the backend. The backend controller persists the detection document to **MongoDB** and returns the assigned `_id`. SQLite marks the record as `synced: true` and stores the remote `_id` for future reference.
   </Step>
   <Step title="Visible in admin dashboard">
     The detection is now queryable by the admin panel. The dashboard calls `/api/stats/kpis` and `/api/stats/incidence` to refresh counters and trend charts. Individual records appear in the user management view, and the geographic coordinates (captured via `expo-location`) are rendered as heat-map points via **React Leaflet**. Administrators can drill into any detection, view the Cloudinary-hosted image, and export the full history as a ZIP archive.

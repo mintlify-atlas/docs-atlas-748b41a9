@@ -1,7 +1,7 @@
 ---
-title: "DEC REST API Reference Overview"
+title: "DEC Coffee Disease Detection API – Endpoint Reference"
 sidebarTitle: "Overview"
-description: "The DEC REST API runs on Express and Node.js, exposes JSON endpoints for users, detections, pathologies, admin operations, and statistics, secured with JWT."
+description: "DEC REST API on Express and Node.js: JSON endpoints for users, detections, pathologies, treatments, admin operations, and statistics, secured with JWT."
 ---
 
 The DEC (Detección de Enfermedades en Cafetales) API is an Express.js REST API built with Node.js that exposes structured JSON endpoints for managing users, disease detections, pathologies, treatments, and administrative operations. The server listens on port **8089** by default (configurable via the `PORT` environment variable). All request and response bodies are JSON. Every protected endpoint requires a valid JWT passed in the `Authorization: Bearer` header.
@@ -75,6 +75,7 @@ The table below lists every route registered in the DEC backend. The **Auth** co
 | `POST` | `/api/users/upload-profile-picture` | 🔒 | Upload a profile picture (`multipart/form-data`, field `image`). Stores the image on Cloudinary and returns the new URL. |
 | `DELETE` | `/api/users/delete` | 🔒 | Delete the authenticated user's account. Requires the current password in the request body. |
 | `DELETE` | `/api/users/delete-social` | 🔒 | Delete a social (Google/Facebook) account without a password confirmation. |
+| `PUT` | `/api/users/edit` | 🔒 | Update the authenticated user's `name` field. |
 | `POST` | `/api/users/send-message` | Public | Submit a contact-us message. Accepts `name`, `email`, and `message` fields. |
 | `POST` | `/api/detections/save` | 🔒 | Save a new detection result with an uploaded leaf image (`multipart/form-data`, field `image`). |
 | `GET` | `/api/detections/history` | 🔒 | Retrieve the paginated detection history for the authenticated user. |
@@ -90,7 +91,9 @@ The table below lists every route registered in the DEC backend. The **Auth** co
 | `POST` | `/api/recover/change-pass` | Public | Reset the password using the recovery code. Requires `email`, `code`, and `newPass` in the body. |
 | `GET` | `/api/messages/user/:userId` | 🔒 🛡️ | Admin: retrieve all contact messages submitted by a specific user. |
 | `DELETE` | `/api/messages/:messageId` | 🔒 🛡️ | Admin: delete a specific contact message. |
-| `GET` | `/api/notifications/unread` | 🔒 | Return unread notifications for the authenticated user. |
+| `POST` | `/api/notifications/create` | 🔒 🛡️ | Admin: create and broadcast a new notification to users. |
+| `GET` | `/api/notifications/my` | 🔒 | Return all notifications for the authenticated user. |
+| `POST` | `/api/notifications/:id/read` | 🔒 | Mark a specific notification as read by its ID. |
 | `GET` | `/api/admin/get-users` | 🔒 🛡️ | Admin: list all registered users. |
 | `PUT` | `/api/admin/edit-user/:id` | 🔒 🛡️ | Admin: edit user data by ID. |
 | `DELETE` | `/api/admin/delete-user/:id` | 🔒 🛡️ | Admin: permanently delete a user by ID. |

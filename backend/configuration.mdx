@@ -1,7 +1,7 @@
 ---
-title: "Configure DEC Backend Environment Variables"
+title: "Configure Environment Variables for the DEC Backend"
 sidebarTitle: "Configuration"
-description: "Reference for all DEC backend environment variables: MongoDB connection, JWT secret, Cloudinary credentials, Google/Facebook OAuth keys, and SMTP settings."
+description: "Reference for all DEC backend environment variables: MongoDB URI, JWT secret, Cloudinary credentials, Google and Facebook OAuth keys, and email settings."
 ---
 
 All runtime configuration for the DEC backend is supplied through environment variables. At startup the server calls `dotenv.config()`, which reads a `.env` file located at the **`backend/` root**. No hardcoded credentials should ever appear in source code — every sensitive value must come from this file.
@@ -70,14 +70,6 @@ All runtime configuration for the DEC backend is supplied through environment va
   ```
 </ParamField>
 
-<ParamField body="FACEBOOK_APP_ID" type="string" required>
-  Your Facebook application ID from the Meta Developer Console. The client-side Facebook SDK uses this to initiate the login flow and obtain an access token that is then forwarded to `POST /api/users/auth/facebook`.
-
-  ```
-  FACEBOOK_APP_ID=1234567890123456
-  ```
-</ParamField>
-
 <ParamField body="FACEBOOK_APP_SECRET" type="string" required>
   Your Facebook application secret. Used in `controllers/facebookAuth.js` to validate the HMAC-SHA256 signature of the `signed_request` payload sent by Facebook to the data-deletion callback endpoint (`POST /api/users/auth/facebook-deletion`).
 
@@ -102,27 +94,19 @@ All runtime configuration for the DEC backend is supplied through environment va
   ```
 </ParamField>
 
-<ParamField body="SMTP_HOST" type="string" required>
-  SMTP server hostname for Nodemailer-based email delivery. Commonly `smtp.gmail.com` for Gmail accounts.
+<ParamField body="EMAIL_USER" type="string" required>
+  Gmail address used by Nodemailer in `controllers/contactUs.js` to deliver contact-form messages to the administrator. This is the sender address for outgoing contact emails.
 
   ```
-  SMTP_HOST=smtp.gmail.com
-  ```
-</ParamField>
-
-<ParamField body="SMTP_USER" type="string" required>
-  SMTP username — typically the full email address of the sending account.
-
-  ```
-  SMTP_USER=your_email@gmail.com
+  EMAIL_USER=your_email@gmail.com
   ```
 </ParamField>
 
-<ParamField body="SMTP_PASS" type="string" required>
-  SMTP password or app-specific password. For Gmail accounts with 2-Factor Authentication enabled, generate a dedicated **App Password** from your Google Account security settings instead of using your main account password.
+<ParamField body="EMAIL_PASS" type="string" required>
+  Gmail App Password for the account set in `EMAIL_USER`. Because Nodemailer connects directly to Gmail's SMTP server, you must generate a dedicated **App Password** from your Google Account security settings when 2-Factor Authentication is enabled — do not use your main account password.
 
   ```
-  SMTP_PASS=xxxx xxxx xxxx xxxx
+  EMAIL_PASS=xxxx xxxx xxxx xxxx
   ```
 </ParamField>
 
@@ -159,17 +143,15 @@ GOOGLE_WEB_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
 GOOGLE_APP_CLIENT_ID=your_google_app_client_id.apps.googleusercontent.com
 
 # ─── Facebook Login ──────────────────────────────────────────
-FACEBOOK_APP_ID=your_facebook_app_id
 FACEBOOK_APP_SECRET=your_facebook_app_secret
 
 # ─── Resend (transactional email) ────────────────────────────
 RESEND_API_KEY=re_your_resend_api_key
 FROM_EMAIL=no-reply@your-verified-domain.com
 
-# ─── SMTP (Nodemailer fallback) ──────────────────────────────
-SMTP_HOST=smtp.gmail.com
-SMTP_USER=your_email@gmail.com
-SMTP_PASS=your_app_specific_password
+# ─── Gmail / Nodemailer (contact-form emails) ────────────────
+EMAIL_USER=your_email@gmail.com
+EMAIL_PASS=your_app_specific_password
 
 # ─── Server ──────────────────────────────────────────────────
 PORT=8089
@@ -230,7 +212,7 @@ Facebook Login is used for the `POST /api/users/auth/facebook` endpoint. The cli
   <Step title="Add Facebook Login product">
     In the app dashboard, click **Add Product** and select **Facebook Login**. Configure the valid OAuth redirect URIs for your backend.
   </Step>
-  <Step title="Copy App ID and App Secret to .env">
-    Go to **Settings → Basic** to find your **App ID** and **App Secret**. Set `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` in your `.env` file. The App Secret is required to validate the data-deletion callback signature.
+  <Step title="Copy the App Secret to .env">
+    Go to **Settings → Basic** to find your **App Secret**. Set `FACEBOOK_APP_SECRET` in your `.env` file. The App Secret is required to validate the HMAC-SHA256 signature on the data-deletion callback sent by Meta.
   </Step>
 </Steps>

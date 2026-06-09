@@ -1,7 +1,7 @@
 ---
 title: "POST /api/detections/save — Save a Disease Detection"
 sidebarTitle: "Save Detection"
-description: "Upload a coffee plant image with its AI diagnosis result to the DEC backend. Requires JWT auth. Stores the detection in MongoDB and returns the saved record."
+description: "Upload a coffee plant image with its AI diagnosis result to DEC. Requires JWT auth. Stores the detection in MongoDB and links it to the user's history."
 ---
 
 After the on-device TFLite model produces a disease diagnosis result, the mobile app calls this endpoint to persist the detection to the server for history tracking and admin review. The image is uploaded from memory directly to Cloudinary, a Pathology record is resolved from the `disease` name, and the full detection — including GPS coordinates — is saved to MongoDB and linked to the authenticated user's history array.

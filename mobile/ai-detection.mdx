@@ -1,7 +1,7 @@
 ---
-title: "On-Device AI Disease Detection in DEC"
+title: "DEC On-Device AI: YOLOv11 Coffee Disease Detection"
 sidebarTitle: "AI Detection"
-description: "How DEC loads the TensorFlow Lite YOLOv11 model, preprocesses camera images, runs inference on-device, and maps predictions to pathology entries in the database."
+description: "How DEC runs YOLOv11 TFLite inference on-device: image preprocessing, confidence scoring, and mapping results to coffee disease records."
 ---
 
 All inference in DEC runs **entirely on-device** using `react-native-fast-tflite`. No image is transmitted to a server for analysis — the camera frame is processed locally, the TFLite model produces confidence scores, and only the final result (disease name, confidence, GPS coordinates) is persisted and optionally synced to the backend. This design makes the core detection feature fully functional with no internet connection.
@@ -71,8 +71,8 @@ The pixel extraction uses an **offscreen `GLView`** (Expo2DContext) that is posi
 ## Detection Pipeline
 
 <Steps>
-  <Step title="User captures image via expo-camera or expo-image-picker">
-    `CameraScreen` calls `cameraRef.current.takePictureAsync({ quality: 0.7 })` to capture a JPEG from the rear camera. The screen overlays a **220 × 220 pt dashed green reticle** that defines the region of interest. The same flow is triggered if the user picks an image from the gallery.
+  <Step title="User captures image via expo-camera">
+    `CameraScreen` calls `cameraRef.current.takePictureAsync({ quality: 0.7 })` to capture a JPEG from the rear-facing camera. The screen overlays a **220 × 220 pt dashed green reticle** that defines the region of interest; the user taps the shutter button to trigger the capture.
   </Step>
   <Step title="Image is cropped and resized with expo-image-manipulator">
     The captured photo is first **cropped** to the reticle region (coordinates scaled by the ratio of photo resolution to screen resolution), then **resized** to 640 × 640 pixels by `imageToTensor()`. This two-step approach eliminates background noise and matches the exact input tensor the model was trained on.
@@ -108,7 +108,7 @@ The pixel extraction uses an **offscreen `GLView`** (Expo2DContext) that is posi
   <Step title="Model outputs confidence scores per disease class">
     The raw output is a flat array laid out in YOLOv11 format:
 
-    ```
+    ```text
     [(x_center, y_center, width, height, class_0, ..., class_3) × 8 400 detections]
     ```
 

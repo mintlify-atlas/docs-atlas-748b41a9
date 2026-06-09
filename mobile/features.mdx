@@ -1,7 +1,7 @@
 ---
-title: "DEC Mobile App Features and Screen Reference"
+title: "DEC Mobile App Features: Screens and Navigation Guide"
 sidebarTitle: "Features"
-description: "Complete reference for DEC's mobile screens: authentication, camera capture, AI detection results, history, profile management, notifications, and offline support."
+description: "Complete guide to DEC mobile screens: auth, camera capture, AI results, history, treatment logs, offline SQLite sync, and push reminders."
 ---
 
 The DEC mobile app provides coffee farmers and agronomists with a complete plant health toolkit — from AI-powered disease detection using an on-device YOLOv11 model to offline-first local storage, treatment tracking, scheduled reminders, and synchronized history. All functionality is available on iOS and Android; the web build delivers history browsing and an admin dashboard but omits on-device inference.
@@ -19,7 +19,7 @@ The DEC mobile app provides coffee farmers and agronomists with a complete plant
     Email-based recovery split across two screens. **ForgotPassword** sends a one-time code (`POST /api/recover/req-code`). **ResetPassword** accepts the code and a new password (`POST /api/recover/change-pass`).
   </Card>
   <Card title="Onboarding" icon="star">
-    Shown on first launch using `react-native-onboarding-swiper`. Introduces the app's core capabilities before the user reaches the Login screen.
+    Displayed on first launch via the `OnboardingScreen` component (`src/components/OnboardingScreen.jsx`), which uses `react-native-onboarding-swiper`. Once completed, a flag is written to `AsyncStorage` so the swiper is not shown again. The user is then directed to the Login screen.
   </Card>
 </CardGroup>
 
@@ -29,8 +29,8 @@ The DEC mobile app provides coffee farmers and agronomists with a complete plant
   <Step title="Main screen — tap the camera button">
     After login, the user lands on **MainApp** (the tab navigator). Tapping the camera shortcut navigates to the `Camera` stack screen.
   </Step>
-  <Step title="Camera screen — capture or pick from gallery">
-    `CameraScreen` opens the rear-facing camera via `expo-camera`. A 220 × 220 pt dashed green reticle guides the user to center a single leaf in the frame. A loading overlay (`"Cargando inteligencia artificial..."`) is shown while the TFLite model initializes. The user can also import an image from the device gallery via `expo-image-picker`.
+  <Step title="Camera screen — frame and capture a leaf">
+    `CameraScreen` opens the rear-facing camera via `expo-camera`. A 220 × 220 pt dashed green reticle guides the user to center a single leaf in the frame. A loading overlay (`"Cargando inteligencia artificial..."`) is shown while the TFLite model initializes before the capture button becomes active.
   </Step>
   <Step title="Preprocessing — image resized and normalized">
     On capture, `expo-image-manipulator` crops the image to the reticle area and then resizes it to 640 × 640 pixels. An invisible `GLView` (Expo2DContext) rasterizes the asset and extracts a normalized `Float32Array` with pixel values in `[0, 1]`. See the [AI Detection](/mobile/ai-detection) page for the full pipeline.
@@ -106,7 +106,7 @@ Logs are saved locally in the `treatment_logs` and `treatment_products` SQLite t
 
 The root `AppNavigator` renders different navigator trees based on platform:
 
-```
+```text
 AppNavigator (NavigationContainer)
  ├── MobileNavigator     ← iOS / Android
  │    ├── Auth Stack     (Login, Register, VerifyCode, ForgotPassword, ResetPassword, Terminos)
