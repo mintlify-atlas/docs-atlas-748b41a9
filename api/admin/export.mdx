@@ -1,0 +1,192 @@
+---
+title: "Export Approved Detection Dataset from DEC"
+sidebarTitle: "Export"
+description: "Async three-step export API: start a job, poll status, then download a ZIP of approved detections for model retraining. All steps require an admin JWT."
+---
+
+The export API allows admins to download a ZIP archive of all **approved** detections — including the original images and a `metadata.csv` file — for use in model retraining pipelines. Export is fully asynchronous: call the **start** endpoint to receive a `jobId`, **poll** the status endpoint until the job is `"completed"`, then **download** the ZIP. All three steps require a valid admin JWT.
+
+The ZIP archive produced by a completed job contains:
+- `metadata.csv` — one row per detection with columns: `id`, `pathology`, `confidence`, `date`, `latitude`, `longitude`, `imageUrl`
+- `images/` — directory of detection images, each file named `{detectionId}.{ext}`
+
+<Note>
+  Only detections whose `approved` flag is `true` are included in the export. Use `PATCH /api/admin/toggle-approve/:id` on the **Detections** tab of the admin dashboard to approve individual records before starting the export.
+</Note>
+
+All export routes are mounted under `/api/admin/export` and require both `verifyToken` and `onlyAdmin` middleware.
+
+---
+
+## GET /api/admin/export/start
+
+Start an asynchronous export job. The server immediately returns a `jobId` and begins building the ZIP in the background. An optional date range can be supplied to limit which approved detections are included.
+
+### Query Parameters
+
+<ParamField query="startDate" type="string">
+  ISO 8601 date string for the start of the export window, e.g. `"2025-01-01"`. When provided, only approved detections created on or after midnight of this date are included.
+</ParamField>
+
+<ParamField query="endDate" type="string">
+  ISO 8601 date string for the end of the export window, e.g. `"2025-04-30"`. When provided, only approved detections created before or at 23:59:59 of this date are included.
+</ParamField>
+
+### Response
+
+<ResponseField name="jobId" type="string">
+  UUID v4 string that uniquely identifies this export job. Use it to poll status and download the result.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET "http://localhost:8089/api/admin/export/start?startDate=2025-01-01&endDate=2025-03-31" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+```json
+{ "jobId": "f47ac10b-58cc-4372-a567-0e02b2c3d479" }
+```
+
+---
+
+## GET /api/admin/export/status/:jobId
+
+Check the processing state of a previously started export job. Poll this endpoint until `status` is `"completed"` before attempting a download.
+
+### Path Parameters
+
+<ParamField path="jobId" type="string" required>
+  The UUID returned by `/api/admin/export/start`.
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Current state of the job. Possible values:
+
+  | Value | Meaning |
+  |---|---|
+  | `"preparing"` | Job created; querying the database for approved detections |
+  | `"processing"` | Downloading images and building the ZIP archive |
+  | `"completed"` | ZIP is ready for download |
+  | `"error"` | Job failed; see `message` for the reason |
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total number of approved detections to be processed. Available once the job advances past `"preparing"`.
+</ResponseField>
+
+<ResponseField name="processed" type="number">
+  Number of detection images successfully added to the archive so far.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable progress string, e.g. `"Procesando imagen 34 de 120"`. Contains the error description when `status` is `"error"`.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET http://localhost:8089/api/admin/export/status/f47ac10b-58cc-4372-a567-0e02b2c3d479 \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+```json
+{
+  "status": "processing",
+  "total": 120,
+  "processed": 34,
+  "message": "Procesando imagen 34 de 120"
+}
+```
+
+Completed job:
+
+```json
+{
+  "status": "completed",
+  "total": 120,
+  "processed": 120,
+  "message": "Exportación completada"
+}
+```
+
+---
+
+## GET /api/admin/export/download/:jobId
+
+Download the completed ZIP archive. This endpoint streams the binary file directly to the client. It must only be called after the status endpoint confirms `status: "completed"`. After the file is sent, the server deletes both the job record and the temporary ZIP file.
+
+### Path Parameters
+
+<ParamField path="jobId" type="string" required>
+  The UUID of a completed export job.
+</ParamField>
+
+### Response
+
+A binary ZIP file streamed with:
+- `Content-Type: application/zip`
+- `Content-Disposition: attachment; filename="dataset_{jobId}.zip"`
+
+Returns **404** with `{ "message": "Archivo no disponible" }` if the job does not exist or has not yet reached `"completed"` status.
+
+### Example
+
+```bash
+curl -X GET http://localhost:8089/api/admin/export/download/f47ac10b-58cc-4372-a567-0e02b2c3d479 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -o dataset.zip
+```
+
+---
+
+## Full Export Workflow
+
+The following shell script demonstrates the complete three-step export process, using `jq` to parse JSON responses:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE="http://localhost:8089"
+
+# ── 1. Start the export job ────────────────────────────────────────────────
+echo "Starting export job..."
+JOB=$(curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/admin/export/start?startDate=2025-01-01&endDate=2025-03-31" \
+  | jq -r '.jobId')
+echo "Job ID: $JOB"
+
+# ── 2. Poll until complete ─────────────────────────────────────────────────
+echo "Polling status..."
+while true; do
+  RESPONSE=$(curl -s \
+    -H "Authorization: Bearer $TOKEN" \
+    "$BASE/api/admin/export/status/$JOB")
+
+  STATUS=$(echo "$RESPONSE" | jq -r '.status')
+  MESSAGE=$(echo "$RESPONSE" | jq -r '.message')
+  echo "  → $STATUS: $MESSAGE"
+
+  if [ "$STATUS" = "completed" ]; then
+    break
+  elif [ "$STATUS" = "error" ]; then
+    echo "Export failed: $MESSAGE"
+    exit 1
+  fi
+
+  sleep 2
+done
+
+# ── 3. Download the ZIP ────────────────────────────────────────────────────
+echo "Downloading dataset..."
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/admin/export/download/$JOB" \
+  -o dataset.zip
+
+echo "Done. Saved to dataset.zip"
+```

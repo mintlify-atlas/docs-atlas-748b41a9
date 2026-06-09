@@ -1,0 +1,125 @@
+---
+title: "GET /api/pathologies — Coffee Disease Catalog"
+sidebarTitle: "Pathologies"
+description: "Retrieve the list of supported coffee plant diseases from the DEC pathology catalog. Returns name, description, treatment, alert flag, product recommendations, and a reference image URL. Requires JWT."
+---
+
+The pathology catalog is the database of coffee diseases that DEC can detect and diagnose. Each pathology record maps to an output class produced by the on-device TensorFlow Lite model (YOLOv11-based) and provides agronomic guidance displayed to the farmer after a detection. Records are stored in the `pathologies` MongoDB collection and managed by admins via the admin panel.
+
+---
+
+## GET /api/pathologies/
+
+Returns all pathology records from the catalog. The controller projects only the fields relevant to client display: `name`, `description`, `treatment`, `imageUrl`, and `recommendations`.
+
+### Authentication
+
+Requires a valid JWT supplied as `Authorization: Bearer <token>`. The `verifyToken` middleware validates the token and rejects requests with a **401** (missing token) or **403** (invalid/expired token). No admin role is required — any authenticated user can fetch the catalog.
+
+### Response
+
+Array of pathology objects.
+
+<ResponseField name="[]._id" type="string">
+  MongoDB ObjectId of the pathology document.
+</ResponseField>
+
+<ResponseField name="[].name" type="string">
+  Common or scientific name of the coffee disease (e.g. `"Roya"`, `"Ojo de Gallo"`, `"Antracnosis"`). This value matches the class label used by the AI model.
+</ResponseField>
+
+<ResponseField name="[].description" type="string">
+  Agronomic description of the disease, its causes, and general impact on the crop.
+</ResponseField>
+
+<ResponseField name="[].treatment" type="string">
+  General treatment recommendation for managing the disease.
+</ResponseField>
+
+<ResponseField name="[].alert" type="boolean">
+  When `true`, the admin panel flags this pathology as requiring special attention or elevated priority in the dashboard.
+</ResponseField>
+
+<ResponseField name="[].imageUrl" type="string">
+  Cloudinary URL of a reference image for this disease. May be an empty string if no image has been uploaded by an admin.
+</ResponseField>
+
+<ResponseField name="[].recommendations" type="array of object">
+  Structured list of commercial product recommendations for treating this disease.
+
+  <Expandable title="Recommendation object fields">
+    <ResponseField name="productName" type="string">
+      Commercial product name, e.g. `"Amistar Top"`.
+    </ResponseField>
+    <ResponseField name="activeIngredient" type="string">
+      Active chemical ingredient, e.g. `"Azoxistrobina + Difenoconazol"`.
+    </ResponseField>
+    <ResponseField name="dose" type="string">
+      Recommended application dose, e.g. `"0.5 L/ha"`.
+    </ResponseField>
+    <ResponseField name="price" type="string">
+      Approximate retail price, e.g. `"$85.000"`.
+    </ResponseField>
+    <ResponseField name="supplier" type="string">
+      Manufacturer or distributor name, e.g. `"Syngenta"`.
+    </ResponseField>
+    <ResponseField name="link" type="string">
+      Purchase URL for the product. May be empty if not configured.
+    </ResponseField>
+    <ResponseField name="_id" type="string">
+      MongoDB ObjectId of this subdocument.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET http://localhost:8089/api/pathologies/ \
+  -H "Authorization: Bearer $USER_TOKEN"
+```
+
+```json
+[
+  {
+    "_id": "664b3a1e2f9c5d001a7e8b01",
+    "name": "Roya",
+    "description": "La roya del cafeto (Hemileia vastatrix) es el hongo más destructivo en los cultivos de café. Se manifiesta con pústulas de color naranja en el envés de las hojas, provocando defoliación severa y reducción del rendimiento.",
+    "treatment": "Aplicar fungicidas sistémicos a base de triazoles o estreptomicinas preventivamente. Aumentar la densidad de siembra de variedades resistentes como Castillo o Colombia.",
+    "alert": true,
+    "imageUrl": "https://res.cloudinary.com/dec-app/image/upload/v1714000000/pathologies/roya.jpg",
+    "recommendations": [
+      {
+        "_id": "664b3a1e2f9c5d001a7e8b02",
+        "productName": "Amistar Top",
+        "activeIngredient": "Azoxistrobina + Difenoconazol",
+        "dose": "0.5 L/ha",
+        "price": "$85.000",
+        "supplier": "Syngenta",
+        "link": "https://www.syngenta.com.co/producto/amistar-top"
+      }
+    ]
+  },
+  {
+    "_id": "664b3a1e2f9c5d001a7e8b10",
+    "name": "Ojo de Gallo",
+    "description": "Causada por el hongo Mycena citricolor. Produce lesiones circulares de color café claro con halo amarillo en las hojas, llevando a la caída prematura del follaje.",
+    "treatment": "Realizar podas de saneamiento y aplicar fungicidas cúpricos en épocas de alta humedad. Mejorar la aireación del cultivo.",
+    "alert": false,
+    "imageUrl": "",
+    "recommendations": []
+  }
+]
+```
+
+### Error Responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `401` | `{ "message": "Acceso denegado. No hay token." }` | Authorization header missing |
+| `403` | `{ "message": "Token inválido o expirado." }` | JWT signature invalid or token expired |
+| `500` | `{ "message": "Error al recuperar catálogo técnico" }` | Database error |
+
+<Note>
+  Admin-only operations on pathology records (editing the name, description, treatment, alert flag, recommendations, or uploading a reference image) are available through `PUT /api/admin/edit-pathology/:id` and `POST /api/admin/upload-pathology-image/:id`. These routes require an admin JWT. See the [Admin Users](/api/admin/users) page for authentication details.
+</Note>

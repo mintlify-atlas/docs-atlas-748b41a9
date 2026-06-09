@@ -1,0 +1,113 @@
+---
+title: "POST /api/detections/save — Save a Disease Detection"
+sidebarTitle: "Save Detection"
+description: "Upload a coffee plant image with its AI diagnosis result to the DEC backend. Requires JWT auth. Stores the detection in MongoDB and returns the saved record."
+---
+
+After the on-device TFLite model produces a disease diagnosis result, the mobile app calls this endpoint to persist the detection to the server for history tracking and admin review. The image is uploaded from memory directly to Cloudinary, a Pathology record is resolved from the `disease` name, and the full detection — including GPS coordinates — is saved to MongoDB and linked to the authenticated user's history array.
+
+---
+
+## POST /api/detections/save
+
+**Method:** `POST`  
+**Path:** `/api/detections/save`  
+**Auth:** `Authorization: Bearer <token>` (required)  
+**Content-Type:** `multipart/form-data`
+
+### Request fields
+
+<ParamField body="image" type="file" required>
+  The captured coffee plant image. Sent as a `multipart/form-data` file field named `image`. Uploaded directly to Cloudinary via a memory buffer — no file is written to disk on the server.
+</ParamField>
+
+<ParamField body="disease" type="string" required>
+  The name of the detected pathology as returned by the TFLite model (e.g. `"Roya"`, `"Ojo de Gallo"`). The server performs a case-trimmed lookup against the `Pathology` collection. Returns `404` if the name does not match any stored pathology.
+</ParamField>
+
+<ParamField body="confidence" type="number" required>
+  Model confidence score from **0 to 1** (e.g. `0.94` for 94% confidence).
+</ParamField>
+
+<ParamField body="lat" type="number" required>
+  Latitude of the detection location in decimal degrees (e.g. `2.9273`). Stored as part of a GeoJSON `Point`.
+</ParamField>
+
+<ParamField body="lng" type="number" required>
+  Longitude of the detection location in decimal degrees (e.g. `-75.2819`). Stored as the first coordinate in GeoJSON `[lng, lat]` order.
+</ParamField>
+
+### Responses
+
+#### 201 — Detection saved
+
+<ResponseField name="message" type="string">
+  `"¡Detección guardada con éxito en el historial!"`
+</ResponseField>
+
+<ResponseField name="detection" type="object">
+  <Expandable title="detection fields">
+    <ResponseField name="_id" type="string">MongoDB ObjectId of the saved detection record.</ResponseField>
+    <ResponseField name="userId" type="string">ObjectId of the authenticated user who created the detection.</ResponseField>
+    <ResponseField name="pathologyId" type="string">ObjectId of the matched `Pathology` document.</ResponseField>
+    <ResponseField name="imageUrl" type="string">Public Cloudinary URL of the uploaded image.</ResponseField>
+    <ResponseField name="location" type="object">
+      <Expandable title="location fields">
+        <ResponseField name="type" type="string">Always `"Point"` (GeoJSON).</ResponseField>
+        <ResponseField name="coordinates" type="array">
+          `[longitude, latitude]` — note the GeoJSON order (longitude first).
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="confidence" type="number">Confidence score between 0 and 1.</ResponseField>
+    <ResponseField name="approved" type="boolean">Admin approval flag. Defaults to `false` for new detections.</ResponseField>
+    <ResponseField name="createdAt" type="string">ISO 8601 creation timestamp.</ResponseField>
+    <ResponseField name="updatedAt" type="string">ISO 8601 last-updated timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Error responses
+
+| Status | Meaning |
+|--------|---------|
+| `400`  | No image received in the request. |
+| `401`  | Missing or malformed JWT. |
+| `403`  | JWT invalid or expired. |
+| `404`  | `disease` name not found in the `Pathology` collection. |
+| `500`  | Cloudinary upload failure or database error. |
+
+```bash
+curl -X POST https://api.dec-app.online/api/detections/save \
+  -H "Authorization: Bearer <token>" \
+  -F "image=@/path/to/leaf_photo.jpg" \
+  -F "disease=Roya" \
+  -F "confidence=0.94" \
+  -F "lat=2.9273" \
+  -F "lng=-75.2819"
+```
+
+---
+
+## GET /api/detections/count
+
+Returns the total number of detections saved by the authenticated user.
+
+**Auth:** `Authorization: Bearer <token>` (required)
+
+### Responses
+
+<ResponseField name="count" type="number">
+  Total number of detection records belonging to the authenticated user.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Count returned successfully. |
+| `401`  | Missing or malformed JWT. |
+| `403`  | JWT invalid or expired. |
+| `500`  | Database error. |
+
+```bash
+curl -X GET https://api.dec-app.online/api/detections/count \
+  -H "Authorization: Bearer <token>"
+```

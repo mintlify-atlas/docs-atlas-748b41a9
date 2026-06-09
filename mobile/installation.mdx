@@ -1,0 +1,114 @@
+---
+title: "Install and Run the DEC Mobile App with Expo"
+sidebarTitle: "Installation"
+description: "Install Expo dependencies, set up Google OAuth and API URL environment variables, and run DEC on iOS, Android, or a web browser using Expo CLI."
+---
+
+The DEC mobile app is built with **React Native + Expo** and runs on iOS, Android, and web from a single codebase. The Expo managed workflow handles native modules — including `react-native-fast-tflite`, `expo-camera`, `expo-sqlite`, and Google/Facebook sign-in — so you can get started without needing Xcode or Android Studio for local development using Expo Go.
+
+## Prerequisites
+
+- **Node.js v18+** and npm
+- **Expo CLI** — install globally with `npm install -g expo-cli`
+- For iOS: macOS with Xcode installed, or a physical iPhone/iPad with the **Expo Go** app
+- For Android: Android Studio with an emulator configured, or a physical device with the **Expo Go** app installed
+
+## Installation
+
+<Steps>
+  <Step title="Navigate to the frontend directory">
+    From the repository root, move into the Expo project folder:
+
+    ```bash
+    cd frontend/DEC
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all JavaScript and native dependencies:
+
+    ```bash
+    npm install
+    ```
+
+    Key packages installed include `expo ~55.0.15`, `react-native 0.83.4`, `react-native-fast-tflite ^2.0.0`, `expo-camera ~55.0.15`, `expo-sqlite ~55.0.15`, and `@react-native-google-signin/google-signin ^16.1.2`.
+  </Step>
+
+  <Step title="Create the environment file">
+    Create a `.env` file in `frontend/DEC/` with the following variables:
+
+    ```bash
+    # Google OAuth — required for Google Sign-In on mobile
+    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your_google_web_client_id
+    EXPO_PUBLIC_GOOGLE_APP_CLIENT_ID=your_google_app_client_id
+
+    # Backend API base URL (no trailing slash)
+    EXPO_PUBLIC_API_URL=http://localhost:8089
+    ```
+
+    - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` — the Web Client ID from your Google Cloud project; used by `GoogleSignin.configure()` in `AuthContext.js`.
+    - `EXPO_PUBLIC_GOOGLE_APP_CLIENT_ID` — the Android/iOS Client ID for native Google Sign-In.
+    - `EXPO_PUBLIC_API_URL` — base URL of the DEC backend API. The internal Axios instance appends `/api/` to this value.
+  </Step>
+
+  <Step title="Start the Expo development server">
+    Launch the Metro bundler and Expo CLI:
+
+    ```bash
+    npm start
+    # or equivalently
+    npx expo start
+    ```
+
+    The Expo developer menu will open in your terminal.
+  </Step>
+
+  <Step title="Open the app on your target platform">
+    From the Expo developer menu, choose your platform:
+
+    | Key | Action |
+    |-----|--------|
+    | `w` | Open in web browser |
+    | `i` | Open in iOS Simulator (macOS only) |
+    | `a` | Open in Android Emulator |
+    | Scan QR | Open in Expo Go on a physical device |
+  </Step>
+</Steps>
+
+## Available Scripts
+
+The following scripts are defined in `package.json`:
+
+| Script | Command | Description |
+|--------|---------|-------------|
+| `start` | `expo start` | Start the Expo development server (all platforms) |
+| `android` | `expo run:android` | Compile and run a native Android debug build |
+| `ios` | `expo run:ios` | Compile and run a native iOS debug build |
+| `web` | `expo start --web` | Start in web-only mode |
+| `build:web` | `expo export --platform web && node copy-fonts.js` | Export a production web build and copy font assets |
+
+## Physical Device Note
+
+<Note>
+  When running on a **physical device** with Expo Go, `localhost` in `EXPO_PUBLIC_API_URL` will not resolve — your phone and development machine must be on the same Wi-Fi network and you must use your machine's **local IP address**. For example:
+
+  ```bash
+  EXPO_PUBLIC_API_URL=http://192.168.1.42:8089
+  ```
+
+  The DEC backend defaults to port `8089`. You can find your local IP with `ipconfig` (Windows) or `ifconfig` / `ip a` (macOS/Linux).
+</Note>
+
+## EAS Build (Production)
+
+For production-ready binaries submitted to the App Store or Google Play, use **Expo Application Services (EAS) Build**. The project is pre-configured with EAS project ID `03e2f248-6cd0-4b8c-a177-41660d5ee325` in `app.json`.
+
+```bash
+# Build for Android (APK / AAB)
+eas build --platform android
+
+# Build for iOS (IPA)
+eas build --platform ios
+```
+
+The app bundles are identified as `com.decapp.app` on both iOS (`bundleIdentifier`) and Android (`package`). Make sure you have an Expo account and are logged in with `eas login` before running these commands.

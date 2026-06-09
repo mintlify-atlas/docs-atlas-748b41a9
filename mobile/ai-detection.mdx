@@ -1,0 +1,195 @@
+---
+title: "On-Device AI Disease Detection in DEC"
+sidebarTitle: "AI Detection"
+description: "How DEC loads the TensorFlow Lite YOLOv11 model, preprocesses camera images, runs inference on-device, and maps predictions to pathology entries in the database."
+---
+
+All inference in DEC runs **entirely on-device** using `react-native-fast-tflite`. No image is transmitted to a server for analysis — the camera frame is processed locally, the TFLite model produces confidence scores, and only the final result (disease name, confidence, GPS coordinates) is persisted and optionally synced to the backend. This design makes the core detection feature fully functional with no internet connection.
+
+## Model Details
+
+| Property | Value |
+|----------|-------|
+| **Model file** | `assets/model/best_float16.tflite` |
+| **Architecture** | YOLOv11 (base) |
+| **Quantization** | Float16 |
+| **TFLite library** | `react-native-fast-tflite` v2 (`^2.0.0`) |
+| **Input shape** | `[1, 640, 640, 3]` — single RGB image, normalized to `[0, 1]` |
+| **Output** | Flat array: `[4 + NUM_CLASSES] × 8 400` detection slots (bounding box coords + class probabilities) |
+| **Disease classes** | 4 (`Cercospora`, `Minador de la hoja`, `Roya (Leaf Rust)`, `Araña roja`) |
+| **Confidence threshold** | 0.70 (70 %) — detections below this are reported as `"Objeto no identificado"` |
+
+The model is registered as an Expo plugin in `app.json` (`"react-native-fast-tflite"`) and bundled with the native binary at build time via `expo-asset`.
+
+## Image Preprocessing
+
+Before the model can run inference, the raw camera frame must be resized, cropped, and converted into a `Float32Array`. This is handled by `imageToTensor()` in `src/services/aiServices.js`.
+
+```js
+// src/services/aiServices.js (excerpt)
+import { loadTensorflowModel } from 'react-native-fast-tflite';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { Asset } from 'expo-asset';
+
+const TF_IMG_SIZE = 640; // Model input width and height
+
+export const imageToTensor = async (uri, ctx) => {
+  // 1. Resize the cropped image to match the model input (640 × 640)
+  const resized = await manipulateAsync(
+    uri,
+    [{ resize: { width: TF_IMG_SIZE, height: TF_IMG_SIZE } }],
+    { format: SaveFormat.JPEG }
+  );
+
+  // 2. Load the resized image as an Expo Asset
+  const assets = await Asset.loadAsync(resized.uri);
+  const asset = assets[0];
+
+  // 3. Draw into the offscreen GLView canvas (invisible, positioned off-screen)
+  ctx.drawImage(asset, 0, 0, TF_IMG_SIZE, TF_IMG_SIZE);
+  ctx.flush(); // Sync with GPU before reading pixels
+
+  // 4. Extract raw RGBA pixel data from the canvas
+  const imageData = ctx.getImageData(0, 0, TF_IMG_SIZE, TF_IMG_SIZE);
+  const pixels = imageData.data;
+
+  // 5. Convert RGBA → normalized Float32 RGB [0, 1]
+  const float32 = new Float32Array(TF_IMG_SIZE * TF_IMG_SIZE * 3);
+  let floatIdx = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    float32[floatIdx++] = pixels[i]     / 255.0; // R
+    float32[floatIdx++] = pixels[i + 1] / 255.0; // G
+    float32[floatIdx++] = pixels[i + 2] / 255.0; // B
+  }
+
+  return float32;
+};
+```
+
+The pixel extraction uses an **offscreen `GLView`** (Expo2DContext) that is positioned at `left: -1000` in `CameraScreen`, making it invisible to the user while providing GPU-accelerated pixel readback.
+
+## Detection Pipeline
+
+<Steps>
+  <Step title="User captures image via expo-camera or expo-image-picker">
+    `CameraScreen` calls `cameraRef.current.takePictureAsync({ quality: 0.7 })` to capture a JPEG from the rear camera. The screen overlays a **220 × 220 pt dashed green reticle** that defines the region of interest. The same flow is triggered if the user picks an image from the gallery.
+  </Step>
+  <Step title="Image is cropped and resized with expo-image-manipulator">
+    The captured photo is first **cropped** to the reticle region (coordinates scaled by the ratio of photo resolution to screen resolution), then **resized** to 640 × 640 pixels by `imageToTensor()`. This two-step approach eliminates background noise and matches the exact input tensor the model was trained on.
+
+    ```js
+    const cropped = await manipulateAsync(
+      photo.uri,
+      [{
+        crop: {
+          originX: originX * scaleX,
+          originY: originY * scaleY,
+          width:   BOX_SIZE  * scaleX,
+          height:  BOX_SIZE  * scaleY,
+        }
+      }],
+      { compress: 0.8, format: SaveFormat.JPEG }
+    );
+    ```
+  </Step>
+  <Step title="Tensor fed to the TFLite model via react-native-fast-tflite">
+    The `Float32Array` produced by `imageToTensor()` is passed to `runInference()`:
+
+    ```js
+    export const runInference = async (inputFloat32) => {
+      const model = await loadModel(); // Singleton — loaded once per session
+      const outputs = await model.run([inputFloat32]);
+      return outputs[0];
+    };
+    ```
+
+    `loadModel()` calls `loadTensorflowModel(require('../../assets/model/best_float16.tflite'))` on first use and caches the instance. Subsequent calls return the cached model immediately.
+  </Step>
+  <Step title="Model outputs confidence scores per disease class">
+    The raw output is a flat array laid out in YOLOv11 format:
+
+    ```
+    [(x_center, y_center, width, height, class_0, ..., class_3) × 8 400 detections]
+    ```
+
+    `processPrediction()` iterates over all 8 400 detection slots and all 4 class channels to find the single highest confidence score:
+
+    ```js
+    const PROB_OFFSET   = 4;           // Skip 4 bounding-box values
+    const NUM_DETECTIONS = 8400;
+    const NUM_CLASSES    = 4;
+    const UMBRAL         = 0.70;       // Minimum 70 % confidence
+
+    for (let det = 0; det < NUM_DETECTIONS; det++) {
+      for (let cls = 0; cls < NUM_CLASSES; cls++) {
+        const idx   = (PROB_OFFSET + cls) * NUM_DETECTIONS + det;
+        const score = predictionData[idx];
+        if (score > mejorConf) { mejorConf = score; mejorClase = cls; }
+      }
+    }
+    ```
+  </Step>
+  <Step title="Result mapped to a disease name and pathology record">
+    The winning class index is looked up in the disease map:
+
+    ```js
+    const MAPA_ENFERMEDADES = {
+      0: "Cercospora",
+      1: "Minador de la hoja",
+      2: "Roya (Leaf Rust)",
+      3: "Araña roja"
+    };
+    ```
+
+    `CameraScreen` enriches this with a scientific name and description from a local `infoMap`. The **full pathology record** (description, treatment guidance, recommended products) is retrieved from the local SQLite `pathologies` table via `getPathologyWithRecommendations()` from `dbService.js` — no network call required.
+  </Step>
+  <Step title="Detection saved to SQLite with saveDetectionLocal()">
+    After the results screen is shown, the detection is persisted locally:
+
+    ```js
+    // dbService.js
+    export const saveDetectionLocal = (disease, confidence, imageUri, lat, lng) => {
+      const date = new Date().toISOString();
+      return db.runSync(
+        'INSERT INTO detections (disease, confidence, image_uri, date, lat, lng, synced) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [disease, confidence, imageUri, date, lat, lng, 0]
+      );
+    };
+    ```
+
+    The `synced` flag starts at `0`. When connectivity is available, `syncDetections()` in `syncService.js` uploads pending rows to `POST /api/detections/save` with the image as `multipart/form-data`, then marks them as synced (`synced = 1`).
+  </Step>
+</Steps>
+
+## Supported Diseases
+
+The model was trained on coffee plant disease imagery and recognizes **four pathology classes** plus a healthy-plant state:
+
+| Class index | Common name | Scientific name | Description |
+|-------------|-------------|-----------------|-------------|
+| 0 | Cercospora | *Cercospora coffeicola* | Circular spots with a light center that affect bean quality |
+| 1 | Minador de la hoja | *Leucoptera coffeella* | Leaf-mining larvae that create necrotic galleries |
+| 2 | Roya (Leaf Rust) | *Hemileia vastatrix* | Orange powdery spots on the underside of leaves; the most economically damaging coffee disease |
+| 3 | Araña roja | *Oligonychus ilicis* | Red spider mite that bronzes leaves during dry spells |
+| — | Planta Sana | — | No disease detected; confidence below 70 % threshold |
+
+The full catalogue — including detailed descriptions, symptoms, and treatment recommendations — is stored in the **MongoDB** `pathologies` collection on the backend and served at `GET /api/pathologies`. On app startup, `AuthContext.js` fetches this catalogue and caches it in the local SQLite `pathologies` table so all detail screens load offline.
+
+## Confidence and Severity
+
+The model returns a raw score in the range `[0.0, 1.0]` for each detection slot. DEC converts and surfaces this value as follows:
+
+- **Raw score → display percentage**: `(score * 100).toFixed(2) + "%"` (e.g., `"87.34%"`)
+- **Minimum threshold**: detections below **70 %** (`UMBRAL = 0.70`) are classified as `"Objeto no identificado"` regardless of which class scored highest
+- **DetectionDetailScreen** renders the confidence as an animated progress bar alongside the numeric percentage
+- **Severity mapping**: the `confidence` value stored in MongoDB (`Number`, normalized `0–1`) allows the backend and admin dashboard to group detections by severity band (e.g., low `< 0.75`, medium `0.75–0.90`, high `> 0.90`) for statistical reporting via `GET /api/stats/kpis`
+
+## Web Behavior
+
+<Note>
+  The TFLite model (`react-native-fast-tflite`) is a **native module** and is not available in the web build. Web users can view detection history, browse the pathology catalogue, and access the admin dashboard, but cannot run on-device inference. The `AppNavigator` automatically loads `WebNavigator.web` on `Platform.OS === 'web'`, which excludes the `Camera` and `Result` stack screens entirely.
+</Note>
+
+<Tip>
+  For the most accurate detection results: take photos in **bright, natural daylight** or under diffuse indoor lighting; avoid harsh shadows across the leaf. Position the camera so **a single leaf** fills the green reticle as completely as possible and keep the device still until the capture button responds. Blurry or low-contrast images will return lower confidence scores and may fall below the 70 % threshold.
+</Tip>

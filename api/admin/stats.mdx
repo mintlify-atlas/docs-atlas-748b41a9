@@ -1,0 +1,191 @@
+---
+title: "Admin Statistics API Endpoints for DEC"
+sidebarTitle: "Stats"
+description: "Three admin-only endpoints returning KPI totals, disease incidence time series, and geographic map data for the DEC admin dashboard heatmap."
+---
+
+<Note>
+  These three endpoints power the **Dashboard** and **Heatmap** tabs in the DEC admin web panel (`AdminDashboard.web.jsx`). The KPI endpoint feeds the summary cards at the top of the dashboard; the incidence endpoint drives the Recharts line/bar chart; the map endpoint feeds the Leaflet heatmap layer.
+</Note>
+
+All statistics routes are mounted at `/api/stats` and require both `verifyToken` and `onlyAdmin` middleware — a valid admin JWT must be supplied as a Bearer token on every request.
+
+---
+
+## GET /api/stats/kpis
+
+Returns platform-wide KPI totals for the admin dashboard summary cards. Counts are computed in real time from MongoDB.
+
+### Query Parameters
+
+This endpoint accepts no query parameters.
+
+### Response
+
+<ResponseField name="totalUsers" type="number">
+  Total number of registered user documents in the `users` collection.
+</ResponseField>
+
+<ResponseField name="totalDetections" type="number">
+  Total number of detection records stored in the `detections` collection.
+</ResponseField>
+
+<ResponseField name="totalPathologies" type="number">
+  Total number of pathology (disease) records in the catalog.
+</ResponseField>
+
+<ResponseField name="avgConfidence" type="number">
+  Average model confidence score across all detections, expressed as a decimal between `0` and `1`. Returns `0` when no detections exist.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET http://localhost:8089/api/stats/kpis \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+```json
+{
+  "totalUsers": 312,
+  "totalDetections": 1847,
+  "totalPathologies": 8,
+  "avgConfidence": 0.8741
+}
+```
+
+---
+
+## GET /api/stats/incidence
+
+Returns detection counts grouped by disease over a time range, formatted for direct consumption by Recharts. When no date filters are supplied, the endpoint defaults to the **last 30 days**.
+
+### Query Parameters
+
+<ParamField query="startDate" type="string">
+  ISO 8601 date string for the start of the range, e.g. `"2025-01-01"`. If omitted (or empty string), defaults to 30 days before the current date.
+</ParamField>
+
+<ParamField query="endDate" type="string">
+  ISO 8601 date string for the end of the range, e.g. `"2025-04-30"`. If omitted (or empty string), the upper bound is removed and all records up to the present are included.
+</ParamField>
+
+<ParamField query="groupBy" type="string">
+  Time granularity for aggregation. Accepted values:
+  - `"day"` *(default)* — groups by `YYYY-MM-DD`
+  - `"week"` — groups by `YYYY-WXX` (ISO week number)
+  - `"month"` — groups by `YYYY-MM`
+</ParamField>
+
+### Response
+
+Array of period objects sorted chronologically. Each object has a `name` key containing the formatted period string, plus one dynamic key per disease name whose value is the detection count for that period.
+
+<ResponseField name="[].name" type="string">
+  The formatted time period label (e.g. `"2025-03-15"`, `"2025-W11"`, `"2025-03"`), used as the x-axis key by Recharts.
+</ResponseField>
+
+<ResponseField name="[].{diseaseName}" type="number">
+  Detection count for the named disease in this period. The key is the value of `pathology.name` from the catalog (e.g. `"Roya"`, `"Ojo de Gallo"`). A period only includes keys for diseases that had at least one detection in that interval.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET "http://localhost:8089/api/stats/incidence?startDate=2025-03-01&endDate=2025-03-31&groupBy=day" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+```json
+[
+  { "name": "2025-03-01", "Roya": 4, "Ojo de Gallo": 1 },
+  { "name": "2025-03-02", "Roya": 7 },
+  { "name": "2025-03-05", "Antracnosis": 2, "Roya": 3 },
+  { "name": "2025-03-10", "Ojo de Gallo": 5 }
+]
+```
+
+```bash
+# Grouped by month, all-time
+curl -X GET "http://localhost:8089/api/stats/incidence?groupBy=month" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+```json
+[
+  { "name": "2025-01", "Roya": 45, "Antracnosis": 12 },
+  { "name": "2025-02", "Roya": 61, "Ojo de Gallo": 8 }
+]
+```
+
+---
+
+## GET /api/stats/map
+
+Returns geographic detection data formatted for the Leaflet heatmap layer. Each point carries coordinates, the detected disease name, the model's confidence score, and the detection timestamp. When no date filters are supplied, the endpoint defaults to the **last 30 days**.
+
+### Query Parameters
+
+<ParamField query="startDate" type="string">
+  ISO 8601 date string defining the start of the time window, e.g. `"2025-01-01"`. Defaults to 30 days ago when omitted.
+</ParamField>
+
+<ParamField query="endDate" type="string">
+  ISO 8601 date string defining the end of the time window, e.g. `"2025-04-30"`. When omitted, no upper bound is applied.
+</ParamField>
+
+### Response
+
+Array of map-point objects, one per detection that falls within the requested date range and has valid geographic coordinates stored in the `location.coordinates` GeoJSON field.
+
+<ResponseField name="[].id" type="string">
+  MongoDB ObjectId of the detection document.
+</ResponseField>
+
+<ResponseField name="[].lat" type="number">
+  Latitude extracted from `detection.location.coordinates[1]` (GeoJSON stores `[lng, lat]`).
+</ResponseField>
+
+<ResponseField name="[].lng" type="number">
+  Longitude extracted from `detection.location.coordinates[0]`.
+</ResponseField>
+
+<ResponseField name="[].disease" type="string">
+  Name of the detected pathology, populated from the `pathologies` collection. Returns `"Desconocido"` if the pathology reference is missing.
+</ResponseField>
+
+<ResponseField name="[].confidence" type="number">
+  Model confidence score for this detection (decimal `0`–`1`).
+</ResponseField>
+
+<ResponseField name="[].date" type="string (ISO 8601)">
+  Timestamp when the detection was created.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET "http://localhost:8089/api/stats/map?startDate=2025-03-01&endDate=2025-03-31" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+```json
+[
+  {
+    "id": "664a1f2e3b9e4c001f8d3c77",
+    "lat": 1.2136,
+    "lng": -77.2811,
+    "disease": "Roya",
+    "confidence": 0.921,
+    "date": "2025-03-14T10:45:00.000Z"
+  },
+  {
+    "id": "664a1f2e3b9e4c001f8d3c88",
+    "lat": 1.8552,
+    "lng": -76.0522,
+    "disease": "Ojo de Gallo",
+    "confidence": 0.874,
+    "date": "2025-03-20T08:12:00.000Z"
+  }
+]
+```

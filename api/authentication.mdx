@@ -1,0 +1,332 @@
+---
+title: "Authenticate Requests to the DEC API"
+sidebarTitle: "Authentication"
+description: "How to obtain a JWT from DEC's login, Google OAuth, or Facebook auth endpoints, and how to pass it in the Authorization header on every protected API call."
+---
+
+DEC uses **JSON Web Tokens (JWT)** for session management across its mobile and web clients. Every protected endpoint verifies the token found in the `Authorization: Bearer <token>` header before processing the request. Tokens are signed with the `JWT_SECRET` environment variable and are issued with a **30-day expiry** (`expiresIn: '30d'`). A token can be effectively invalidated by deleting the user account it was issued for.
+
+## Obtain a Token
+
+<Tabs>
+  <Tab title="Email / Password">
+    Use this flow for accounts created through the standard registration form.
+
+    **Endpoint**
+
+    ```
+    POST /api/users/login
+    ```
+
+    **Request body**
+
+    <ParamField body="email" type="string" required>
+      The user's registered email address (e.g. `user@gmail.com`).
+    </ParamField>
+
+    <ParamField body="password" type="string" required>
+      The user's plain-text password. It is compared against the bcrypt hash stored in the database.
+    </ParamField>
+
+    **Example request**
+
+    ```bash
+    curl -X POST https://your-server/api/users/login \
+      -H "Content-Type: application/json" \
+      -d '{
+        "email": "farmer@gmail.com",
+        "password": "mypassword123"
+      }'
+    ```
+
+    **Success response** `200 OK`
+
+    ```json
+    {
+      "message": "Bienvenido, FARMER",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "user": {
+        "id": "6650a1b2c3d4e5f678901234",
+        "name": "Farmer",
+        "email": "farmer@gmail.com",
+        "role": "user"
+      }
+    }
+    ```
+
+    Store the `token` value securely (see [Use the Token](#use-the-token) below). On mobile, DEC uses `expo-secure-store`; on web, it falls back to `sessionStorage`.
+
+    **Error responses**
+
+    | Status | Condition |
+    |--------|-----------|
+    | `400` | Missing fields, wrong password, or the account was created via Google/Facebook only. |
+    | `401` | No user found for that email address. |
+    | `403` | Account exists but has not yet been verified. The response includes `"verified": false` and the `email` so you can prompt a re-send. |
+  </Tab>
+
+  <Tab title="Google OAuth">
+    Use this flow when the client has authenticated the user with the Google Sign-In SDK and holds a Google ID token.
+
+    **Endpoint**
+
+    ```
+    POST /api/users/auth/google
+    ```
+
+    The Google ID token is passed directly in the `Authorization` header — **not** in the request body.
+
+    **Request headers**
+
+    | Header | Value |
+    |--------|-------|
+    | `Authorization` | `Bearer <google_id_token>` |
+
+    The server verifies the Google ID token against both `GOOGLE_WEB_CLIENT_ID` and `GOOGLE_APP_CLIENT_ID`, then either creates a new user or links the Google identity to an existing account with the same email address.
+
+    **Example request**
+
+    ```bash
+    curl -X POST https://your-server/api/users/auth/google \
+      -H "Authorization: Bearer <google_id_token_from_sdk>"
+    ```
+
+    **Success response** `200 OK`
+
+    ```json
+    {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "user": {
+        "id": "6650a1b2c3d4e5f678901234",
+        "name": "Maria López",
+        "email": "maria@gmail.com",
+        "provider": ["google"],
+        "pictureUrl": "https://lh3.googleusercontent.com/...",
+        "role": "user"
+      }
+    }
+    ```
+
+    The returned `token` is a DEC JWT (30-day expiry) and is used the same way as an email/password token for all subsequent API calls.
+
+    **Error responses**
+
+    | Status | Condition |
+    |--------|-----------|
+    | `401` | No `Authorization` header or the header does not start with `Bearer `. |
+    | `500` | The Google ID token could not be verified (e.g. wrong audience, token expired). |
+  </Tab>
+
+  <Tab title="Facebook">
+    Use this flow when the client has authenticated the user with the Facebook SDK and holds a Facebook user access token.
+
+    **Endpoint**
+
+    ```
+    POST /api/users/auth/facebook
+    ```
+
+    Like Google, the Facebook access token is passed in the `Authorization` header.
+
+    **Request headers**
+
+    | Header | Value |
+    |--------|-------|
+    | `Authorization` | `Bearer <facebook_access_token>` |
+
+    The server calls the Facebook Graph API (`graph.facebook.com/me`) to validate the token and retrieve the user's `id`, `name`, `email`, and `picture`. It then creates a new user or links the Facebook identity to an existing account.
+
+    **Example request**
+
+    ```bash
+    curl -X POST https://your-server/api/users/auth/facebook \
+      -H "Authorization: Bearer <facebook_access_token_from_sdk>"
+    ```
+
+    **Success response** `200 OK`
+
+    ```json
+    {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "user": {
+        "id": "6650a1b2c3d4e5f678901234",
+        "name": "Juan Perez",
+        "email": "juan@gmail.com",
+        "provider": ["facebook"],
+        "pictureUrl": "https://graph.facebook.com/...",
+        "role": "user"
+      }
+    }
+    ```
+
+    **Error responses**
+
+    | Status | Condition |
+    |--------|-----------|
+    | `401` | No `Authorization` header or the header does not start with `Bearer `. |
+    | `500` | The Facebook token was rejected by the Graph API or the request failed. |
+  </Tab>
+</Tabs>
+
+## Use the Token
+
+Once you hold a DEC JWT, include it in every request to a protected endpoint using the standard `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+     https://your-server/api/users/me
+```
+
+**Axios interceptor (React Native / Web client)**
+
+The DEC frontend configures a request interceptor that automatically attaches the stored token to every outgoing `axios` call. The interceptor also handles `401` responses by clearing the stored token and redirecting to the login screen:
+
+```js
+import axios from 'axios';
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+
+const api = axios.create({
+  baseURL: 'http://your-server:8089/api/',
+  timeout: 20000,
+});
+
+// Attach the token before every request
+api.interceptors.request.use(
+  async (config) => {
+    let token;
+    if (Platform.OS === 'web') {
+      token = sessionStorage.getItem('userToken');
+    } else {
+      token = await SecureStore.getItemAsync('userToken');
+    }
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Handle expired / revoked tokens globally
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      if (Platform.OS === 'web') {
+        sessionStorage.removeItem('userToken');
+        window.location.href = '/login';
+      } else {
+        await SecureStore.deleteItemAsync('userToken');
+      }
+      return Promise.reject(error);
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+```
+
+## Registration Before Login
+
+<Note>
+  New email/password users must complete a **two-step registration** before they can log in:
+
+  1. **`POST /api/users/register`** — supply `name`, `email`, and `password`. A 6-digit verification code is emailed to the address provided. The code expires in **30 minutes**.
+  2. **`POST /api/users/verify-code`** — supply the same `email` and the received `code`. On success the account is marked as verified and the user may log in.
+
+  Attempting to call `POST /api/users/login` on an unverified account returns `403 Forbidden` with `"verified": false` in the response body.
+</Note>
+
+## Admin-Only Routes
+
+Certain endpoints are restricted to users whose account `role` field equals `"admin"`. These routes apply the `onlyAdmin` middleware **after** `verifyToken`:
+
+```js
+// middlewares/auth.js
+export const onlyAdmin = (req, res, next) => {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ message: "Acceso denegado" });
+  }
+  next();
+};
+```
+
+If the `role` claim in the JWT payload is anything other than `"admin"` — including a valid token for a regular `"user"` — the server immediately returns:
+
+```json
+{
+  "message": "Acceso denegado"
+}
+```
+
+with a `403 Forbidden` status. Admin-only routes in DEC include all `/api/admin/*` and `/api/stats/*` endpoints, as well as the message management routes under `/api/messages/*`. An admin account can only be created by an existing admin using `PATCH /api/admin/change-role/:id`.
+
+## Password Recovery
+
+If a user forgets their password, DEC provides a two-step recovery flow that does **not** require an active session token.
+
+**Step 1 — Request a recovery code**
+
+```
+POST /api/recover/req-code
+```
+
+<ParamField body="email" type="string" required>
+  The email address associated with the account to recover.
+</ParamField>
+
+```bash
+curl -X POST https://your-server/api/recover/req-code \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "farmer@gmail.com" }'
+```
+
+A 6-digit code is generated, stored against the user record (with a 15-minute expiry), and emailed via Resend. The response is always:
+
+```json
+{
+  "message": "Si existe el correo, recibirás un código de verificación"
+}
+```
+
+**Step 2 — Set a new password**
+
+```
+POST /api/recover/change-pass
+```
+
+<ParamField body="email" type="string" required>
+  The user's email address.
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  The 6-digit numeric code received by email. Must be exactly 6 digits.
+</ParamField>
+
+<ParamField body="newPass" type="string" required>
+  The new plain-text password. The server hashes it with bcrypt before saving.
+</ParamField>
+
+```bash
+curl -X POST https://your-server/api/recover/change-pass \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "farmer@gmail.com",
+    "code": "482910",
+    "newPass": "newsecurepass99"
+  }'
+```
+
+**Success response** `200 OK`
+
+```json
+{
+  "message": "Contraseña actualizada exitosamente. Ya puedes iniciar sesión con tu nueva contraseña"
+}
+```
+
+A confirmation email is also sent to the user after a successful password change. If the code has expired or is invalid, the server returns `400 Bad Request` with `"Código inválido o expirado"`.

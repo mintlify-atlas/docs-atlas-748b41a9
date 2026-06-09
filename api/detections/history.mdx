@@ -1,0 +1,149 @@
+---
+title: "Detection History Endpoints for the DEC API"
+sidebarTitle: "History"
+description: "GET /api/detections/history returns the current user's detection records. DELETE endpoints remove individual or all detections. All routes require JWT."
+---
+
+The detection history endpoints let the mobile app fetch, display, and manage the current user's saved detections. Records are scoped strictly to the authenticated user — no user can read or delete another user's data. The history list supports server-side pagination so large datasets can be loaded incrementally.
+
+---
+
+## GET /api/detections/history
+
+Returns a paginated list of all detections belonging to the authenticated user, sorted by creation date descending (most recent first). Each detection includes the populated pathology name and treatment from the `Pathology` collection.
+
+**Auth:** `Authorization: Bearer <token>` (required)
+
+### Query parameters
+
+<ParamField query="page" type="number">
+  Page number to retrieve. Defaults to `1`. Each page contains up to `limit` records.
+</ParamField>
+
+<ParamField query="limit" type="number">
+  Number of records per page. Defaults to `10`.
+</ParamField>
+
+### Responses
+
+<ResponseField name="history" type="array">
+  Array of detection objects for the current page.
+  <Expandable title="detection item fields">
+    <ResponseField name="_id" type="string">MongoDB ObjectId of the detection record.</ResponseField>
+    <ResponseField name="userId" type="string">ObjectId of the owning user.</ResponseField>
+    <ResponseField name="pathologyId" type="object">
+      Populated pathology document.
+      <Expandable title="pathology fields">
+        <ResponseField name="name" type="string">Name of the detected disease (e.g. `"Roya"`).</ResponseField>
+        <ResponseField name="treatment" type="string">Recommended treatment text.</ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="imageUrl" type="string">Public Cloudinary URL of the captured image.</ResponseField>
+    <ResponseField name="location" type="object">
+      <Expandable title="location fields">
+        <ResponseField name="type" type="string">Always `"Point"` (GeoJSON).</ResponseField>
+        <ResponseField name="coordinates" type="array">`[longitude, latitude]` of the detection site.</ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="confidence" type="number">Model confidence score, 0–1.</ResponseField>
+    <ResponseField name="approved" type="boolean">Admin approval flag.</ResponseField>
+    <ResponseField name="createdAt" type="string">ISO 8601 creation timestamp.</ResponseField>
+    <ResponseField name="updatedAt" type="string">ISO 8601 last-updated timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="hasMore" type="boolean">
+  `true` if there are additional records beyond the current page.
+</ResponseField>
+
+<ResponseField name="totalRecords" type="number">
+  Total number of detections for the authenticated user across all pages.
+</ResponseField>
+
+<ResponseField name="currentPage" type="number">
+  The page number returned by this response.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | History returned successfully. |
+| `401`  | Missing or malformed JWT. |
+| `403`  | JWT invalid or expired. |
+| `500`  | Database error. |
+
+```bash
+# Fetch page 1 (default, 10 records per page)
+curl -X GET "https://api.dec-app.online/api/detections/history" \
+  -H "Authorization: Bearer <token>"
+
+# Fetch page 2 with 5 records per page
+curl -X GET "https://api.dec-app.online/api/detections/history?page=2&limit=5" \
+  -H "Authorization: Bearer <token>"
+```
+
+---
+
+## DELETE /api/detections/delete-detection:id
+
+Deletes a single detection record by its MongoDB ObjectId. The server verifies that the record's `userId` matches the authenticated user, so a user cannot delete another user's detections. On success the record is also removed from the user's `history` array.
+
+**Auth:** `Authorization: Bearer <token>` (required)
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The `_id` of the detection to delete (MongoDB ObjectId string, 24 hex characters).
+</ParamField>
+
+### Responses
+
+<ResponseField name="message" type="string">
+  `"Detección eliminada"` on success.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Detection deleted and removed from the user's history array. |
+| `401`  | Missing or malformed JWT. |
+| `403`  | JWT invalid or expired. |
+| `404`  | No detection found with that `_id` for the authenticated user. |
+| `500`  | Database error. |
+
+```bash
+curl -X DELETE "https://api.dec-app.online/api/detections/delete-detection686a1f2c3e4b5d6e7f8a9b0c" \
+  -H "Authorization: Bearer <token>"
+```
+
+---
+
+## DELETE /api/detections/clear-history
+
+Deletes **all** detection records belonging to the authenticated user in a single operation and resets the user's `history` array to empty. The number of deleted records is returned in the response.
+
+**Auth:** `Authorization: Bearer <token>` (required)
+
+<Warning>
+  This operation is **irreversible**. All detection records — including their Cloudinary image URLs — are permanently removed from the database and cannot be recovered. Confirm with the user before calling this endpoint.
+</Warning>
+
+### Request
+
+No request body. Authentication is via the `Authorization` header only.
+
+### Responses
+
+<ResponseField name="message" type="string">
+  `"Se eliminaron N detecciones."` where `N` is the number of records deleted.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | All detections deleted; user history array cleared. |
+| `401`  | Missing or malformed JWT. |
+| `403`  | JWT invalid or expired. |
+| `500`  | Database error. |
+
+```bash
+curl -X DELETE https://api.dec-app.online/api/detections/clear-history \
+  -H "Authorization: Bearer <token>"
+```

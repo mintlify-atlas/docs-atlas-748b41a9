@@ -1,20 +1,79 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "DEC: AI-Powered Coffee Disease Detection"
+sidebarTitle: "Home"
+description: "DEC detects and diagnoses coffee plant diseases in real time using on-device AI. Cross-platform mobile app for iOS and Android, plus a web admin dashboard."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+DEC (Detección de Enfermedades en Cafetales) is a cross-platform application that helps farmers and agronomists identify coffee plant diseases instantly. Point the camera at a leaf, and DEC's on-device TensorFlow Lite model — trained on YOLOv11 — returns a diagnosis with confidence score, severity rating, and treatment recommendations in seconds.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Set up the backend and mobile app and run your first disease detection in minutes.
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand how the backend API, mobile client, AI model, and admin dashboard fit together.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Explore every REST endpoint — authentication, detections, pathologies, admin operations, and stats.
+  </Card>
+  <Card title="Admin Dashboard" icon="gauge" href="/admin/overview">
+    Manage users, review detections, view heatmaps, and export datasets from the web dashboard.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## How DEC Works
+
+<Steps>
+  <Step title="Authenticate">
+    Users register or sign in with email/password, Google, or Facebook. The backend issues a JWT that secures every subsequent request.
+  </Step>
+  <Step title="Capture an image">
+    The mobile app opens the device camera (or the image picker). The image is passed directly to the on-device TensorFlow Lite model — no upload required for inference.
+  </Step>
+  <Step title="AI analysis">
+    The YOLOv11-based model classifies the disease, returns a confidence score, and maps the result to a pathology entry in the database for treatment details.
+  </Step>
+  <Step title="Save & sync">
+    The detection is stored locally in SQLite and automatically synced to MongoDB via the REST API when a network connection is available.
+  </Step>
+</Steps>
+
+## Key Features
+
+<CardGroup cols={3}>
+  <Card title="On-Device AI" icon="brain">
+    TensorFlow Lite inference runs entirely on the device — no internet required for detection.
+  </Card>
+  <Card title="Cross-Platform" icon="mobile">
+    Single React Native codebase targets iOS, Android, and responsive web via Expo.
+  </Card>
+  <Card title="Multi-Auth" icon="shield-check">
+    Email/password, Google OAuth, and Facebook SDK with secure JWT session management.
+  </Card>
+  <Card title="Offline-First" icon="database">
+    SQLite stores detections locally; background sync pushes them to MongoDB automatically.
+  </Card>
+  <Card title="Admin Dashboard" icon="chart-bar">
+    Web-only panel with user management, detection approval, incidence heatmaps, and KPI tiles.
+  </Card>
+  <Card title="Dataset Export" icon="file-zipper">
+    Admins can export approved detections as a ZIP archive for model retraining workflows.
+  </Card>
+</CardGroup>
+
+## Explore the Docs
+
+<CardGroup cols={2}>
+  <Card title="Backend Setup" icon="server" href="/backend/installation">
+    Install Node.js dependencies, configure environment variables, and start the Express server.
+  </Card>
+  <Card title="Mobile App" icon="mobile-screen" href="/mobile/installation">
+    Install Expo dependencies, configure API URL and OAuth credentials, and run on a device or simulator.
+  </Card>
+  <Card title="AI Detection" icon="magnifying-glass" href="/mobile/ai-detection">
+    Learn how the TensorFlow Lite model is loaded, how images are preprocessed, and how results are interpreted.
+  </Card>
+  <Card title="Data Sync" icon="arrows-rotate" href="/guides/data-sync">
+    Understand the offline-first SQLite → MongoDB sync pipeline and how conflicts are handled.
+  </Card>
+</CardGroup>

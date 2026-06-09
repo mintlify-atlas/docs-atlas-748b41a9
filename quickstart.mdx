@@ -1,47 +1,142 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with DEC in 5 Steps"
+sidebarTitle: "Quickstart"
+description: "Clone the DEC repo, configure environment variables for both backend and frontend, and run your first AI-powered coffee disease detection in under 10 minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide walks you through setting up a fully functional local instance of DEC — backend API, MongoDB database, and the React Native + Expo client — from a clean machine. By the end you will be able to log in, point the camera at a coffee leaf, and receive an AI-generated disease diagnosis. The whole process takes **under 10 minutes** assuming your prerequisites are already in place.
 
 ## Prerequisites
 
-Before you begin, you must have:
+Before you begin, make sure the following are available on your machine:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+- **Node.js v18+** and **npm** (verify with `node -v` and `npm -v`)
+- **MongoDB** — running locally (`mongod`) or a free [MongoDB Atlas](https://www.mongodb.com/atlas) cluster
+- **Expo CLI** — install globally with `npm install -g expo-cli`
+- **Google OAuth Client ID** — create one in the [Google Cloud Console](https://console.cloud.google.com/) (you need both a Web Client ID and an Android/iOS App Client ID)
+- **Facebook App ID** — register your app at [Meta for Developers](https://developers.facebook.com/)
+- **Cloudinary account** — free tier at [cloudinary.com](https://cloudinary.com) for detection image storage
+- **SMTP credentials** — any SMTP provider (e.g., Gmail with an App Password) for password-recovery emails
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Clone the repository">
+    Clone the DEC monorepo and enter the project root:
 
     ```bash
-    npm install your-package
+    git clone <repository-url>
+    cd DEC
+    ```
+
+    The repository contains two top-level directories: `backend/` (Node.js + Express API) and `frontend/DEC/` (React Native + Expo client).
+  </Step>
+
+  <Step title="Configure the backend">
+    Create the backend environment file, install dependencies, and start the development server.
+
+    <CodeGroup>
+      ```bash Terminal
+      cd backend
+      npm install
+      npm run dev
+      ```
+
+      ```bash backend/.env
+      # ── Database ───────────────────────────────────────────
+      MONGODB_URI=mongodb://localhost:27017/dec
+
+      # ── Authentication ─────────────────────────────────────
+      JWT_SECRET=your_strong_jwt_secret_key
+
+      # ── Cloudinary (image storage) ─────────────────────────
+      CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
+      CLOUDINARY_API_KEY=your_cloudinary_api_key
+      CLOUDINARY_API_SECRET=your_cloudinary_api_secret
+
+      # ── OAuth Providers ────────────────────────────────────
+      GOOGLE_CLIENT_ID=your_google_oauth_client_id
+      FACEBOOK_APP_ID=your_facebook_app_id
+
+      # ── Email / SMTP ───────────────────────────────────────
+      SMTP_HOST=smtp.gmail.com
+      SMTP_USER=your_email@gmail.com
+      SMTP_PASS=your_gmail_app_password
+      ```
+    </CodeGroup>
+
+    <Note>
+      The backend server starts on **port 8089** by default (`process.env.PORT || 8089`). If you need a different port, add `PORT=<your_port>` to `backend/.env` and update `EXPO_PUBLIC_API_URL` in the frontend configuration accordingly.
+    </Note>
+
+    A successful start prints:
+
+    ```
+    ✅ Servidor corriendo en puerto 8089
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
-    ```
+  <Step title="Configure the frontend">
+    Open a new terminal tab, navigate to the frontend workspace, create its environment file, install dependencies, and launch the Expo development server.
+
+    <CodeGroup>
+      ```bash Terminal
+      cd frontend/DEC
+      npm install
+      npm start
+      ```
+
+      ```bash frontend/DEC/.env
+      # ── Google OAuth ───────────────────────────────────────
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your_google_web_client_id
+      EXPO_PUBLIC_GOOGLE_APP_CLIENT_ID=your_google_android_ios_client_id
+
+      # ── API Base URL ───────────────────────────────────────
+      # Use your machine's local network IP when testing on a
+      # physical device (e.g., http://192.168.1.xx:8089/api/)
+      EXPO_PUBLIC_API_URL=http://localhost:8089/api/
+      ```
+    </CodeGroup>
+
+    <Warning>
+      When running DEC on a **physical iOS or Android device**, replace `localhost` in `EXPO_PUBLIC_API_URL` with your machine's private network IP address (e.g., `192.168.1.42`). The device and your computer must be on the same Wi-Fi network. `localhost` only resolves correctly inside emulators/simulators.
+    </Warning>
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Open on your platform">
+    Once the Expo Metro bundler is running, choose your target platform from the terminal:
+
+    | Key | Action |
+    |-----|--------|
+    | `w` | Open in your default web browser |
+    | `i` | Launch in the iOS Simulator (macOS + Xcode required) |
+    | `a` | Launch in an Android Emulator (Android Studio required) |
+    | Scan QR | Open **Expo Go** on your physical device and scan the QR code printed in the terminal |
 
     ```bash
-    your-cli start
+    › Metro waiting on exp://192.168.1.42:8081
+    › Scan the QR code above with Expo Go (Android) or the Camera app (iOS)
+    
+    › Press a │ open Android
+    › Press i │ open iOS simulator
+    › Press w │ open web
     ```
+
+    <Tip>
+      For the fastest iteration cycle during development, use **web** (`w`) — it hot-reloads instantly without needing a simulator or physical device.
+    </Tip>
+  </Step>
+
+  <Step title="Run your first detection">
+    With the app open on your chosen platform:
+
+    1. **Register or log in** — create a new account with email/password, or tap **Continue with Google** / **Continue with Facebook** to authenticate via OAuth.
+    2. **Tap the camera button** on the main screen to open the capture view.
+    3. **Point the camera at a coffee leaf** — the app uses `expo-camera` to capture the image and `expo-image-manipulator` to pre-process it.
+    4. **Wait for inference** — the TensorFlow Lite model (`best_float16.tflite`) runs entirely on-device via `react-native-fast-tflite`. No internet connection is needed for this step.
+    5. **View your diagnosis** — the Result screen displays the detected disease, confidence percentage, severity level, and recommended treatment.
+    6. **Check your history** — tap **History** to see all past detections stored in local SQLite, automatically synced to MongoDB in the background.
+
+    <Tip>
+      No coffee plant nearby? Use **expo-image-picker** (the gallery button) to select an existing photo of a coffee leaf from your device's camera roll.
+    </Tip>
   </Step>
 </Steps>
-
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>

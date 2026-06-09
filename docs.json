@@ -1,72 +1,111 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "DEC – Coffee Disease Detection",
+  "theme": "palm",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
-  },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "primary": "#16a34a",
+    "light": "#22c55e",
+    "dark": "#0f2d1a"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/jhon170920/DEC"
     }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
-    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/jhon170920/DEC"
     }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Backend Setup",
+            "pages": [
+              "backend/installation",
+              "backend/configuration",
+              "backend/authentication"
+            ]
+          },
+          {
+            "group": "Mobile App",
+            "pages": [
+              "mobile/installation",
+              "mobile/features",
+              "mobile/ai-detection"
+            ]
+          },
+          {
+            "group": "Admin Dashboard",
+            "pages": [
+              "admin/overview",
+              "admin/user-management",
+              "admin/detections-export"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/data-sync",
+              "guides/notifications",
+              "guides/production-build"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Users",
+            "pages": [
+              "api/users/register",
+              "api/users/profile"
+            ]
+          },
+          {
+            "group": "Detections",
+            "pages": [
+              "api/detections/create",
+              "api/detections/history"
+            ]
+          },
+          {
+            "group": "Admin",
+            "pages": [
+              "api/admin/users",
+              "api/admin/stats",
+              "api/admin/export"
+            ]
+          },
+          {
+            "group": "Catalog",
+            "pages": [
+              "api/pathologies",
+              "api/treatments"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

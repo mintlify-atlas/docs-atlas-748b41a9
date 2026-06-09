@@ -1,0 +1,131 @@
+---
+title: "DEC REST API Reference Overview"
+sidebarTitle: "Overview"
+description: "The DEC REST API runs on Express and Node.js, exposes JSON endpoints for users, detections, pathologies, admin operations, and statistics, secured with JWT."
+---
+
+The DEC (Detección de Enfermedades en Cafetales) API is an Express.js REST API built with Node.js that exposes structured JSON endpoints for managing users, disease detections, pathologies, treatments, and administrative operations. The server listens on port **8089** by default (configurable via the `PORT` environment variable). All request and response bodies are JSON. Every protected endpoint requires a valid JWT passed in the `Authorization: Bearer` header.
+
+## Base URL
+
+For local development the server binds to all interfaces on port 8089:
+
+```
+http://localhost:8089
+```
+
+In production, replace `localhost` with your server's hostname or IP address. The port may be overridden by the `PORT` environment variable at startup.
+
+## Authentication
+
+All protected routes require a signed JWT in the `Authorization` header:
+
+```
+Authorization: Bearer <token>
+```
+
+Tokens are issued with a **30-day expiry** by `jwt.sign` in the login and OAuth controllers. Admin-only routes additionally check the `role` claim inside the token — requests from non-admin users are rejected with `403 Forbidden`.
+
+See the [Authentication reference](/api/authentication) for full details on obtaining and using tokens.
+
+## Endpoint Groups
+
+<CardGroup cols={2}>
+  <Card title="Users & Auth" icon="user-plus" href="/api/users/register">
+    Register a new account, verify the email code, and log in with email/password or OAuth.
+  </Card>
+  <Card title="User Profile" icon="id-card" href="/api/users/profile">
+    Retrieve and update the authenticated user's profile, change password, and upload a profile picture.
+  </Card>
+  <Card title="Detections" icon="camera" href="/api/detections/create">
+    Save a new disease detection with an uploaded leaf image.
+  </Card>
+  <Card title="Detection History" icon="clock-rotate-left" href="/api/detections/history">
+    Browse, count, and delete the authenticated user's detection history.
+  </Card>
+  <Card title="Pathologies" icon="leaf" href="/api/pathologies">
+    Retrieve the catalogue of known coffee-plant diseases from the database.
+  </Card>
+  <Card title="Treatments" icon="kit-medical" href="/api/treatments">
+    List, create, update, and delete treatment records linked to pathologies.
+  </Card>
+  <Card title="Admin Users" icon="shield-halved" href="/api/admin/users">
+    Admin-only operations: list all users, edit, ban, change roles, and delete accounts.
+  </Card>
+  <Card title="Admin Stats & Export" icon="chart-bar" href="/api/admin/stats">
+    Incidence charts, map heatmap data, KPI counters, and dataset export jobs.
+  </Card>
+</CardGroup>
+
+## Full Endpoint Index
+
+The table below lists every route registered in the DEC backend. The **Auth** column indicates whether a valid JWT (`🔒`) and/or admin role (`🛡️`) is required.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/users/register` | Public | Create a new account. Sends a 6-digit verification code to the provided email address. |
+| `POST` | `/api/users/verify-code` | Public | Confirm account email with the 6-digit code received after registration. |
+| `POST` | `/api/users/login` | Public | Authenticate with email and password. Returns a JWT and basic user object. |
+| `POST` | `/api/users/auth/google` | Public | Sign in or register with a Google ID token passed in the `Authorization: Bearer` header. |
+| `POST` | `/api/users/auth/facebook` | Public | Sign in or register with a Facebook access token passed in the `Authorization: Bearer` header. |
+| `POST` | `/api/users/auth/facebook-deletion` | Public | Facebook-required data-deletion callback. Validates the signed request and removes the user from the database. |
+| `GET` | `/api/users/me` | 🔒 | Return the full profile of the currently authenticated user (excludes password and internal verification fields). |
+| `PUT` | `/api/users/edit-profile` | 🔒 | Update the authenticated user's `name` and/or `phone` fields. |
+| `POST` | `/api/users/change-password` | 🔒 | Change the current password by supplying the existing password and a new one. |
+| `POST` | `/api/users/upload-profile-picture` | 🔒 | Upload a profile picture (`multipart/form-data`, field `image`). Stores the image on Cloudinary and returns the new URL. |
+| `DELETE` | `/api/users/delete` | 🔒 | Delete the authenticated user's account. Requires the current password in the request body. |
+| `DELETE` | `/api/users/delete-social` | 🔒 | Delete a social (Google/Facebook) account without a password confirmation. |
+| `POST` | `/api/users/send-message` | Public | Submit a contact-us message. Accepts `name`, `email`, and `message` fields. |
+| `POST` | `/api/detections/save` | 🔒 | Save a new detection result with an uploaded leaf image (`multipart/form-data`, field `image`). |
+| `GET` | `/api/detections/history` | 🔒 | Retrieve the paginated detection history for the authenticated user. |
+| `DELETE` | `/api/detections/delete-detection:id` | 🔒 | Delete a single detection by its ID from the authenticated user's history. |
+| `DELETE` | `/api/detections/clear-history` | 🔒 | Permanently delete all detections belonging to the authenticated user. |
+| `GET` | `/api/detections/count` | 🔒 | Return the total number of detections saved by the authenticated user. |
+| `GET` | `/api/pathologies/` | 🔒 | List all pathologies (diseases) stored in the database. |
+| `GET` | `/api/treatments/` | 🔒 | List all treatment records. |
+| `POST` | `/api/treatments/` | 🔒 | Create a new treatment record. |
+| `PUT` | `/api/treatments/:id` | 🔒 | Update an existing treatment by ID. |
+| `DELETE` | `/api/treatments/:id` | 🔒 | Delete a treatment by ID. |
+| `POST` | `/api/recover/req-code` | Public | Request a password-recovery code. Sends a 6-digit code valid for 15 minutes to the supplied email. |
+| `POST` | `/api/recover/change-pass` | Public | Reset the password using the recovery code. Requires `email`, `code`, and `newPass` in the body. |
+| `GET` | `/api/messages/user/:userId` | 🔒 🛡️ | Admin: retrieve all contact messages submitted by a specific user. |
+| `DELETE` | `/api/messages/:messageId` | 🔒 🛡️ | Admin: delete a specific contact message. |
+| `GET` | `/api/notifications/unread` | 🔒 | Return unread notifications for the authenticated user. |
+| `GET` | `/api/admin/get-users` | 🔒 🛡️ | Admin: list all registered users. |
+| `PUT` | `/api/admin/edit-user/:id` | 🔒 🛡️ | Admin: edit user data by ID. |
+| `DELETE` | `/api/admin/delete-user/:id` | 🔒 🛡️ | Admin: permanently delete a user by ID. |
+| `GET` | `/api/admin/get-detections` | 🔒 🛡️ | Admin: list all detections across all users. |
+| `DELETE` | `/api/admin/delete-detection/:id` | 🔒 🛡️ | Admin: delete any detection by ID. |
+| `GET` | `/api/admin/get-pathologies` | 🔒 🛡️ | Admin: list all pathologies with full detail. |
+| `PUT` | `/api/admin/edit-pathology/:id` | 🔒 🛡️ | Admin: edit a pathology's metadata (name, description, treatment, etc.) by ID. |
+| `POST` | `/api/admin/upload-pathology-image/:id` | 🔒 🛡️ | Admin: upload a representative image for a pathology (`multipart/form-data`, field `image`). |
+| `PATCH` | `/api/admin/toggle-ban/:id` | 🔒 🛡️ | Admin: toggle the ban status of a user by ID. |
+| `PATCH` | `/api/admin/toggle-approve/:id` | 🔒 🛡️ | Admin: approve or unapprove a detection for inclusion in the export dataset. |
+| `PATCH` | `/api/admin/change-role/:id` | 🔒 🛡️ | Admin: change the role of a user (`user` ↔ `admin`) by ID. |
+| `POST` | `/api/admin/send-email` | 🔒 🛡️ | Admin: send a custom email to one or more users. |
+| `GET` | `/api/admin/export/start` | 🔒 🛡️ | Admin: start an async job to export the approved detection dataset. Returns a `jobId`. |
+| `GET` | `/api/admin/export/status/:jobId` | 🔒 🛡️ | Admin: poll the status of an ongoing export job by `jobId`. |
+| `GET` | `/api/admin/export/download/:jobId` | 🔒 🛡️ | Admin: download the completed export archive once the job has finished. |
+| `GET` | `/api/stats/incidence` | 🔒 🛡️ | Admin: incidence-over-time statistics. Accepts `startDate`, `endDate`, and `groupBy` query parameters. |
+| `GET` | `/api/stats/map` | 🔒 🛡️ | Admin: geolocation heatmap data for detections. Accepts `startDate` and `endDate` query parameters. |
+| `GET` | `/api/stats/kpis` | 🔒 🛡️ | Admin: high-level KPI counters (total detections, active users, etc.). Accepts `startDate` and `endDate` query parameters. |
+
+**Auth legend** — 🔒 requires `Authorization: Bearer <token>` · 🛡️ additionally requires `role: "admin"` in the token payload.
+
+## Error Responses
+
+All error responses follow the same JSON structure:
+
+```json
+{
+  "message": "Human-readable description of the error."
+}
+```
+
+| Status | Meaning in DEC |
+|--------|----------------|
+| `400 Bad Request` | A required field is missing or fails validation (e.g. invalid email format, password too short, duplicate registration). |
+| `401 Unauthorized` | No `Authorization` header was provided, the token is absent, or the supplied credentials (email/password) are incorrect. The response body contains `"Acceso denegado. No hay token."` or a credential error message. |
+| `403 Forbidden` | The token is present but invalid or expired, **or** the authenticated user does not have the `admin` role required by the endpoint. |
+| `404 Not Found` | The requested resource (user, detection, pathology, etc.) does not exist in the database. |
+| `500 Internal Server Error` | An unexpected server-side error occurred. The response may include an `error` field with the original error message for debugging. |

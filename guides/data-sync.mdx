@@ -1,0 +1,148 @@
+---
+title: "Offline-First Data Sync in DEC: SQLite to MongoDB"
+sidebarTitle: "Data Sync"
+description: "How DEC stores detections locally in SQLite, monitors network connectivity, and automatically syncs pending records to MongoDB when the device comes back online."
+---
+
+DEC is designed to work without a network connection. Detections are always saved first to the local SQLite database, then synced to MongoDB asynchronously once connectivity is restored. This means field agronomists can capture and record disease detections even in areas with no signal — nothing is lost.
+
+## Local Storage with `dbService.js`
+
+All on-device persistence is handled by `dbService.js`, which uses `expo-sqlite` to open and manage a local database file called `dec_app.db`.
+
+```js
+import * as SQLite from 'expo-sqlite';
+
+const db = SQLite.openDatabaseSync('dec_app.db');
+```
+
+On first launch, `initDatabase()` creates all required tables. The table central to the sync flow is `detections`, which holds locally captured records that have not yet been uploaded:
+
+```sql
+CREATE TABLE IF NOT EXISTS detections (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  disease TEXT,
+  confidence TEXT,
+  image_uri  TEXT,
+  date       TEXT,
+  lat        REAL,
+  lng        REAL,
+  synced     INTEGER DEFAULT 0
+);
+```
+
+The `synced` column acts as the pending-sync flag. A value of `0` means the record has not yet been sent to the backend; `1` means it has been successfully uploaded.
+
+### Key functions
+
+| Function | Description |
+|---|---|
+| `saveDetectionLocal(disease, confidence, imageUri, lat, lng)` | Inserts a new detection row with `synced = 0`. Called immediately after every AI analysis. |
+| `getUnsyncedDetections()` | Returns all rows where `synced = 0` — these are the records queued for upload. |
+| `markAsSynced(id)` | Sets `synced = 1` for a given row after the server confirms the upload. |
+| `saveRemoteDetections(detections)` | Bulk-inserts detections downloaded from MongoDB into the `remote_detections` table for offline browsing. |
+| `clearRemoteDetections()` | Removes all rows from `remote_detections`. |
+| `getAllRemoteDetections()` | Returns all server-synced detections stored locally, ordered by `created_at DESC`. |
+| `getRemoteDetectionsCount()` | Returns the total number of remote detections stored in the local cache. |
+
+The database also holds a `remote_detections` table that stores a read-only cache of detections pulled down from MongoDB, a `pathologies` catalog for offline disease lookups, and several treatment log tables (`treatment_logs`, `treatment_products`).
+
+## Network Monitoring with `useNetworkStatus`
+
+The `useNetworkStatus` hook (`src/hooks/useNetworkStatus.js`) wraps `@react-native-community/netinfo` to provide reactive connectivity state throughout the app.
+
+```js
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+
+const { isConnected, isWifiConnected, netType, canSync, offlineModeActive } = useNetworkStatus();
+```
+
+Internally the hook fetches the initial network state on mount and then subscribes to subsequent changes via `NetInfo.addEventListener`. When the state changes, it updates:
+
+- `isConnected` — `true` when the device has internet (`isConnected && isInternetReachable`)
+- `isWifiConnected` — `true` when the connection type is `'wifi'`
+- `netType` — the raw connection type string (e.g. `'wifi'`, `'cellular'`)
+- `isLoading` — `true` until the first state read completes
+- `canSync` / `canEdit` / `canDelete` — convenience aliases for `isConnected`
+- `offlineModeActive` — inverse of `isConnected`; use this to show an offline banner
+
+The hook cleans up its listener on unmount, preventing memory leaks.
+
+## SyncManager Component
+
+`SyncManager.jsx` is mounted once at the app root. It watches the authenticated user's token from `AuthContext`, then wires up automatic sync as soon as the user is logged in on a mobile device.
+
+```jsx
+import { SyncManager } from './src/components/SyncManager';
+
+// Mounted at the root of the app
+<SyncManager />
+```
+
+When the component mounts (or when `userToken` changes), it:
+
+1. Exits immediately if `Platform.OS === 'web'` — sync is mobile-only.
+2. Dynamically imports `syncService` and `NetInfo` so those modules are never bundled for the web target.
+3. Calls `startAutoSync(userToken)` to subscribe to future connectivity changes.
+4. Immediately calls `forceSync(userToken)` if the device is already online.
+
+```jsx
+useEffect(() => {
+  if (Platform.OS === 'web') return;
+  if (!userToken) return;
+
+  const run = async () => {
+    const { startAutoSync, forceSync } = await import('../services/syncService');
+    const NetInfo = (await import('@react-native-community/netinfo')).default;
+
+    startAutoSync(userToken);
+
+    const netState = await NetInfo.fetch();
+    if (netState.isConnected) {
+      await forceSync(userToken);
+    }
+  };
+
+  run();
+}, [userToken]);
+```
+
+`startAutoSync` registers a `NetInfo` listener that fires all sync tasks in parallel (using `Promise.allSettled`) whenever connectivity is restored. Failed tasks are logged but do not block the others.
+
+## Sync Flow
+
+<Steps>
+  <Step title="User captures a detection">
+    After the AI model analyses an image, `saveDetectionLocal()` writes a row to the `detections` table with `synced = 0`. The detection is immediately visible in the app history from local SQLite — no internet required.
+  </Step>
+  <Step title="Device loses connectivity">
+    `useNetworkStatus` detects the change and sets `isConnected = false`. The sync pipeline in `syncService.js` checks connectivity before every operation and returns early with a log message: `⚠️ Sin internet, no se pueden sincronizar detecciones`.
+  </Step>
+  <Step title="Device reconnects">
+    `startAutoSync`'s `NetInfo` listener receives a state update with `isConnected = true` and triggers `syncDetections()`, `syncServerToLocal(token)`, `syncLocalTreatments()`, `syncRemoteTreatments(token)`, and `syncNotifications(token)` in parallel.
+  </Step>
+  <Step title="Pending detections are read from SQLite">
+    `syncDetections()` calls `getUnsyncedDetections()`, which returns every row in the local `detections` table where `synced = 0`. If the list is empty, the function returns early without hitting the network.
+  </Step>
+  <Step title="Each record is uploaded to the backend">
+    For each pending detection, `syncService` builds a `multipart/form-data` payload containing `disease`, `confidence` (normalized to a 0–1 float), `plantName`, `date`, `notes`, `lat`, `lng`, and the image file. It then calls:
+
+    ```
+    POST /api/detections/save
+    Content-Type: multipart/form-data
+    ```
+
+    Each upload is wrapped in `retryWithBackoff()` with up to 2 retries and exponential delays starting at 1 000 ms.
+  </Step>
+  <Step title="Successful records are marked as synced">
+    When the server responds with `200` or `201`, `markAsSynced(item.id)` sets `synced = 1` for that row. Rows that fail after all retries remain at `synced = 0` and will be retried on the next sync cycle.
+  </Step>
+</Steps>
+
+<Note>
+  **Web platform behavior:** On web, `SyncManager.web.jsx` renders `null` and performs no sync logic. All `dbService` exports are replaced by `dbService.web.js`, which provides no-op stubs for every function (e.g. `getUnsyncedDetections` always returns `[]`). The web client relies entirely on live API calls and does not persist data locally.
+</Note>
+
+<Tip>
+  `SyncManager` handles all retry logic automatically via `retryWithBackoff` and the persistent `NetInfo` listener registered by `startAutoSync`. You never need to manually trigger a sync — simply ensure `SyncManager` is mounted at the app root and the user is authenticated.
+</Tip>

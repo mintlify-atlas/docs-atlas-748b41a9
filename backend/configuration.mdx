@@ -1,0 +1,236 @@
+---
+title: "Configure DEC Backend Environment Variables"
+sidebarTitle: "Configuration"
+description: "Reference for all DEC backend environment variables: MongoDB connection, JWT secret, Cloudinary credentials, Google/Facebook OAuth keys, and SMTP settings."
+---
+
+All runtime configuration for the DEC backend is supplied through environment variables. At startup the server calls `dotenv.config()`, which reads a `.env` file located at the **`backend/` root**. No hardcoded credentials should ever appear in source code — every sensitive value must come from this file.
+
+<Warning>
+  Never commit your `.env` file to version control. Add `backend/.env` to your `.gitignore` immediately. Exposing your `JWT_SECRET`, Cloudinary API secret, or OAuth app secrets allows attackers to forge tokens, consume your storage quota, or hijack your OAuth application.
+</Warning>
+
+---
+
+## Environment Variable Reference
+
+<ParamField body="dbURI" type="string" required>
+  MongoDB connection string used by Mongoose to connect to the database. For a local instance use `mongodb://localhost:27017/dec`. For MongoDB Atlas, copy the connection string from the Atlas dashboard and replace `<password>` with your database user's password.
+
+  ```
+  dbURI=mongodb://localhost:27017/dec
+  ```
+</ParamField>
+
+<ParamField body="JWT_SECRET" type="string" required>
+  Secret key used to sign and verify JSON Web Tokens via the `jsonwebtoken` library. All tokens issued at login (email/password, Google, and Facebook flows) are signed with this key and later verified in `middlewares/auth.js`. Use a long, cryptographically random string in production — at least 32 characters.
+
+  ```
+  JWT_SECRET=a8f3k9mX2pLqRs7wNv1cYeJdH6bGtUoZ
+  ```
+</ParamField>
+
+<ParamField body="CLOUDINARY_CLOUD_NAME" type="string" required>
+  Your Cloudinary **cloud name** as shown in the Cloudinary dashboard. The backend's `services/cloudinary.js` uses this to configure the Cloudinary SDK and upload plant detection images to the `plant_detections/` folder.
+
+  ```
+  CLOUDINARY_CLOUD_NAME=my_cloudinary_cloud
+  ```
+</ParamField>
+
+<ParamField body="CLOUDINARY_API_KEY" type="string" required>
+  Your Cloudinary API key. Found alongside the cloud name in the Cloudinary dashboard's **Product Environment Credentials** section. Required to authenticate upload requests.
+
+  ```
+  CLOUDINARY_API_KEY=123456789012345
+  ```
+</ParamField>
+
+<ParamField body="CLOUDINARY_API_SECRET" type="string" required>
+  Your Cloudinary API secret. Treat this like a password — it authenticates all server-side Cloudinary operations including upload and deletion. Never expose this to client-side code.
+
+  ```
+  CLOUDINARY_API_SECRET=aBcDeFgHiJkLmNoPqRsTuVwXyZ
+  ```
+</ParamField>
+
+<ParamField body="GOOGLE_WEB_CLIENT_ID" type="string" required>
+  Google OAuth 2.0 Client ID for the **web** application. Used in `controllers/googleAuth.js` to instantiate `OAuth2Client` and verify the Google ID token sent by the client. Issued from the Google Cloud Console.
+
+  ```
+  GOOGLE_WEB_CLIENT_ID=123456789-abcde.apps.googleusercontent.com
+  ```
+</ParamField>
+
+<ParamField body="GOOGLE_APP_CLIENT_ID" type="string" required>
+  Google OAuth 2.0 Client ID for the **mobile (Android/iOS)** application. The `verifyIdToken` call in `googleAuth.js` accepts tokens from both `GOOGLE_WEB_CLIENT_ID` and `GOOGLE_APP_CLIENT_ID` as valid audiences, supporting multi-platform sign-in.
+
+  ```
+  GOOGLE_APP_CLIENT_ID=987654321-xyz.apps.googleusercontent.com
+  ```
+</ParamField>
+
+<ParamField body="FACEBOOK_APP_ID" type="string" required>
+  Your Facebook application ID from the Meta Developer Console. The client-side Facebook SDK uses this to initiate the login flow and obtain an access token that is then forwarded to `POST /api/users/auth/facebook`.
+
+  ```
+  FACEBOOK_APP_ID=1234567890123456
+  ```
+</ParamField>
+
+<ParamField body="FACEBOOK_APP_SECRET" type="string" required>
+  Your Facebook application secret. Used in `controllers/facebookAuth.js` to validate the HMAC-SHA256 signature of the `signed_request` payload sent by Facebook to the data-deletion callback endpoint (`POST /api/users/auth/facebook-deletion`).
+
+  ```
+  FACEBOOK_APP_SECRET=abcdef1234567890abcdef1234567890
+  ```
+</ParamField>
+
+<ParamField body="RESEND_API_KEY" type="string" required>
+  API key for the [Resend](https://resend.com) transactional email service. Both `controllers/registerUser.js` (verification code emails) and `controllers/recoverPassword.js` (password-reset emails) use the Resend SDK to send HTML emails to users.
+
+  ```
+  RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  ```
+</ParamField>
+
+<ParamField body="FROM_EMAIL" type="string" required>
+  The sender email address shown in outgoing emails. Must be a domain verified in your Resend account (e.g. `no-reply@dec-app.online`). During development you can use `onboarding@resend.dev` for sandbox testing.
+
+  ```
+  FROM_EMAIL=no-reply@dec-app.online
+  ```
+</ParamField>
+
+<ParamField body="SMTP_HOST" type="string" required>
+  SMTP server hostname for Nodemailer-based email delivery. Commonly `smtp.gmail.com` for Gmail accounts.
+
+  ```
+  SMTP_HOST=smtp.gmail.com
+  ```
+</ParamField>
+
+<ParamField body="SMTP_USER" type="string" required>
+  SMTP username — typically the full email address of the sending account.
+
+  ```
+  SMTP_USER=your_email@gmail.com
+  ```
+</ParamField>
+
+<ParamField body="SMTP_PASS" type="string" required>
+  SMTP password or app-specific password. For Gmail accounts with 2-Factor Authentication enabled, generate a dedicated **App Password** from your Google Account security settings instead of using your main account password.
+
+  ```
+  SMTP_PASS=xxxx xxxx xxxx xxxx
+  ```
+</ParamField>
+
+<ParamField body="PORT" type="number" default="8089">
+  The port on which the Express server listens. Defined in `server.js` as `process.env.PORT || 8089`. If omitted, the server defaults to `8089`. Override this when deploying to platforms that assign their own port (e.g. Render, Railway).
+
+  ```
+  PORT=8089
+  ```
+</ParamField>
+
+---
+
+## Complete .env Example
+
+Copy this template to `backend/.env` and fill in your actual credentials:
+
+```bash
+# backend/.env — DEC Backend Configuration
+
+# ─── Database ────────────────────────────────────────────────
+dbURI=mongodb://localhost:27017/dec
+
+# ─── JWT ─────────────────────────────────────────────────────
+JWT_SECRET=replace_with_a_long_random_secret_string
+
+# ─── Cloudinary (image storage) ──────────────────────────────
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+
+# ─── Google OAuth 2.0 ────────────────────────────────────────
+GOOGLE_WEB_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
+GOOGLE_APP_CLIENT_ID=your_google_app_client_id.apps.googleusercontent.com
+
+# ─── Facebook Login ──────────────────────────────────────────
+FACEBOOK_APP_ID=your_facebook_app_id
+FACEBOOK_APP_SECRET=your_facebook_app_secret
+
+# ─── Resend (transactional email) ────────────────────────────
+RESEND_API_KEY=re_your_resend_api_key
+FROM_EMAIL=no-reply@your-verified-domain.com
+
+# ─── SMTP (Nodemailer fallback) ──────────────────────────────
+SMTP_HOST=smtp.gmail.com
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_app_specific_password
+
+# ─── Server ──────────────────────────────────────────────────
+PORT=8089
+```
+
+---
+
+## Cloudinary Setup
+
+Cloudinary stores all plant detection images and user profile pictures uploaded through the API (files are sent to the `plant_detections/` folder).
+
+<Steps>
+  <Step title="Create a Cloudinary account">
+    Sign up at [cloudinary.com](https://cloudinary.com). The free tier includes 25 credits/month, which is sufficient for development.
+  </Step>
+  <Step title="Open your dashboard">
+    After logging in, go to **Programmable Media → Dashboard**. Your **Cloud Name**, **API Key**, and **API Secret** are shown in the **Product Environment Credentials** card.
+  </Step>
+  <Step title="Copy credentials to .env">
+    Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in your `backend/.env` file with the values from the dashboard.
+  </Step>
+</Steps>
+
+---
+
+## Google OAuth Setup
+
+Google OAuth is used for the `POST /api/users/auth/google` endpoint. The server verifies the ID token sent by the client against Google's public keys using `google-auth-library`.
+
+<Steps>
+  <Step title="Open Google Cloud Console">
+    Go to [console.cloud.google.com](https://console.cloud.google.com) and select or create a project.
+  </Step>
+  <Step title="Enable the Google People API">
+    Navigate to **APIs & Services → Library** and enable the **Google+ API** or **Google Identity** services for your project.
+  </Step>
+  <Step title="Create OAuth 2.0 credentials">
+    Go to **APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID**. Create one Client ID for **Web application** and one for **Android** (or iOS). Add your authorized redirect URIs as needed.
+  </Step>
+  <Step title="Copy Client IDs to .env">
+    Set `GOOGLE_WEB_CLIENT_ID` and `GOOGLE_APP_CLIENT_ID` in your `.env` file with the respective Client ID strings.
+  </Step>
+</Steps>
+
+---
+
+## Facebook Auth Setup
+
+Facebook Login is used for the `POST /api/users/auth/facebook` endpoint. The client obtains an access token via the Facebook SDK and forwards it to the backend, which then calls the Graph API to retrieve user data.
+
+<Steps>
+  <Step title="Open Meta for Developers">
+    Go to [developers.facebook.com](https://developers.facebook.com) and log in with your Facebook account.
+  </Step>
+  <Step title="Create a new app">
+    Click **My Apps → Create App**. Select the **Consumer** app type and fill in the app name and contact email.
+  </Step>
+  <Step title="Add Facebook Login product">
+    In the app dashboard, click **Add Product** and select **Facebook Login**. Configure the valid OAuth redirect URIs for your backend.
+  </Step>
+  <Step title="Copy App ID and App Secret to .env">
+    Go to **Settings → Basic** to find your **App ID** and **App Secret**. Set `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` in your `.env` file. The App Secret is required to validate the data-deletion callback signature.
+  </Step>
+</Steps>

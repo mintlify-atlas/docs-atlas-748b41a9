@@ -1,0 +1,294 @@
+---
+title: "User Registration and Authentication Endpoints"
+sidebarTitle: "Register & Auth"
+description: "API reference for POST /api/users/register, /verify-code, /login, /auth/google, /auth/facebook — create accounts and obtain JWTs in DEC."
+---
+
+DEC provides six authentication endpoints: email-based registration with a verification code, credential login, and OAuth sign-in via Google and Facebook. All successful login responses return a **JWT** valid for 30 days that must be included in the `Authorization` header for protected routes.
+
+---
+
+## POST /api/users/register
+
+Creates a new user account. On success, a 6-digit verification code is emailed to the provided address via Resend. The code expires after **30 minutes**. The account is inactive until verified with `/verify-code`.
+
+**Accepted email domains:** `gmail`, `hotmail`, `yahoo`, `proton`, `outlook`, `icloud`
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  Full name of the user. Must be 2–50 alphabetic characters (accented characters and spaces allowed). No numbers or special characters.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Email address for the account. Must belong to an accepted domain (e.g. `@gmail.com`, `@hotmail.co`). Used as the unique account identifier.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Account password. Must be 8–14 alphanumeric characters with no spaces. Stored as a bcrypt hash (cost factor 10).
+</ParamField>
+
+### Responses
+
+<ResponseField name="message" type="string">
+  `"Se ha enviado el código de verificación a tu correo"` — confirmation that the verification email was dispatched.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `201`  | Account created; verification email sent. |
+| `400`  | Validation error or email already registered. |
+| `500`  | Server error or Resend delivery failure (account is rolled back). |
+
+```bash
+curl -X POST https://api.dec-app.online/api/users/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Juan Perez",
+    "email": "juan.perez@gmail.com",
+    "password": "Secure1234"
+  }'
+```
+
+---
+
+## POST /api/users/verify-code
+
+Activates a newly registered account by validating the 6-digit code sent to the user's email. Once verified, `isVerified` is set to `true` and the code is cleared from the database.
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  The email address used during registration.
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  The 6-digit numeric verification code received by email. Must match exactly and not be expired (valid for 30 minutes from registration).
+</ParamField>
+
+### Responses
+
+<ResponseField name="message" type="string">
+  `"Cuenta verificada con éxito"` on success.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Account successfully verified. |
+| `400`  | Code is invalid, expired, or does not match the email. |
+
+```bash
+curl -X POST https://api.dec-app.online/api/users/verify-code \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "juan.perez@gmail.com",
+    "code": "482910"
+  }'
+```
+
+---
+
+## POST /api/users/login
+
+Authenticates a user with their email and password. Returns a signed JWT on success. The account must already be verified via `/verify-code` before logging in.
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  Registered email address.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Account password in plain text (transmitted over HTTPS, compared against bcrypt hash).
+</ParamField>
+
+### Responses
+
+<ResponseField name="token" type="string">
+  Signed JWT. Valid for **30 days**. Pass this as `Authorization: Bearer <token>` on all protected requests.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Welcome message including the user's name.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  <Expandable title="user fields">
+    <ResponseField name="id" type="string">MongoDB ObjectId of the user.</ResponseField>
+    <ResponseField name="name" type="string">User's full name.</ResponseField>
+    <ResponseField name="email" type="string">User's email address.</ResponseField>
+    <ResponseField name="role" type="string">Account role: `user`, `guest`, `admin`, or `tecnico`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Login successful; JWT returned. |
+| `400`  | Missing fields, wrong password, or account registered via social provider. |
+| `401`  | Email not found. |
+| `403`  | Account exists but email has not been verified yet. |
+
+```bash
+curl -X POST https://api.dec-app.online/api/users/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "juan.perez@gmail.com",
+    "password": "Secure1234"
+  }'
+```
+
+---
+
+## POST /api/users/auth/google
+
+Signs in or registers a user using a Google ID token obtained from the Google Sign-In SDK. If the email already exists from a form-based account, the Google identity is linked to that account automatically. The profile picture from Google is saved if the user has no existing photo.
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  `Bearer <idToken>` — the raw ID token received from the Google Sign-In SDK on the client.
+</ParamField>
+
+### Responses
+
+<ResponseField name="token" type="string">
+  Signed DEC JWT valid for 30 days.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  <Expandable title="user fields">
+    <ResponseField name="id" type="string">MongoDB ObjectId.</ResponseField>
+    <ResponseField name="name" type="string">Name from Google profile.</ResponseField>
+    <ResponseField name="email" type="string">Email from Google profile.</ResponseField>
+    <ResponseField name="provider" type="array">
+      Array of authentication providers linked to this account, e.g. `["google"]` or `["local", "google"]`.
+    </ResponseField>
+    <ResponseField name="pictureUrl" type="string">Google profile photo URL.</ResponseField>
+    <ResponseField name="role" type="string">Account role.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Authentication successful; JWT returned. |
+| `401`  | No token provided or header malformed. |
+| `500`  | Google token verification failed. |
+
+```bash
+curl -X POST https://api.dec-app.online/api/users/auth/google \
+  -H "Authorization: Bearer <google_id_token>"
+```
+
+---
+
+## POST /api/users/auth/facebook
+
+Signs in or registers a user using a Facebook User Access Token obtained from the Facebook Login SDK. Profile data (`id`, `name`, `email`, `picture`) is fetched from the Facebook Graph API. If the email matches an existing account, the Facebook identity is linked automatically.
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  `Bearer <accessToken>` — the user access token returned by the Facebook Login SDK.
+</ParamField>
+
+### Responses
+
+<ResponseField name="token" type="string">
+  Signed DEC JWT valid for 30 days.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  <Expandable title="user fields">
+    <ResponseField name="id" type="string">MongoDB ObjectId.</ResponseField>
+    <ResponseField name="name" type="string">Name from Facebook profile.</ResponseField>
+    <ResponseField name="email" type="string">Email from Facebook profile (may be `null` if the user did not grant email permission).</ResponseField>
+    <ResponseField name="provider" type="array">
+      Authentication providers linked to this account, e.g. `["facebook"]`.
+    </ResponseField>
+    <ResponseField name="pictureUrl" type="string">Facebook profile photo URL (500×500 px).</ResponseField>
+    <ResponseField name="role" type="string">Account role.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Authentication successful; JWT returned. |
+| `401`  | No token provided or header malformed. |
+| `500`  | Facebook Graph API request failed. |
+
+```bash
+curl -X POST https://api.dec-app.online/api/users/auth/facebook \
+  -H "Authorization: Bearer <facebook_access_token>"
+```
+
+---
+
+## POST /api/recover/req-code
+
+Sends a 6-digit password-reset code to the specified email address. The code is valid for **15 minutes**. Use the returned code with `/api/recover/change-pass` to set a new password.
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  The registered email address for which the password should be reset.
+</ParamField>
+
+### Responses
+
+<ResponseField name="message" type="string">
+  `"Si existe el correo, recibirás un código de verificación"` — intentionally vague to prevent email enumeration.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Reset code emailed (or email not found — response is the same to avoid enumeration). |
+| `400`  | Email field missing or format invalid. |
+| `500`  | Resend delivery failure. |
+
+```bash
+curl -X POST https://api.dec-app.online/api/recover/req-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "juan.perez@gmail.com"}'
+```
+
+---
+
+## POST /api/recover/change-pass
+
+Resets the user's password using the code received by email. On success, the code is cleared and a confirmation email is sent. The user can then log in with the new password.
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  The registered email address associated with the reset request.
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  The 6-digit numeric code received via email. Must not be expired (15-minute window).
+</ParamField>
+
+<ParamField body="newPass" type="string" required>
+  The new password to set for the account. Must be at least 6 characters.
+</ParamField>
+
+### Responses
+
+<ResponseField name="message" type="string">
+  `"Contraseña actualizada exitosamente. Ya puedes iniciar sesión con tu nueva contraseña"` on success.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Password updated successfully. |
+| `400`  | Missing fields, invalid code format, or code expired/not found. |
+| `500`  | Server error. |
+
+```bash
+curl -X POST https://api.dec-app.online/api/recover/change-pass \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "juan.perez@gmail.com",
+    "code": "391047",
+    "newPass": "NewPass5678"
+  }'
+```

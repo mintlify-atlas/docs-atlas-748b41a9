@@ -1,0 +1,237 @@
+---
+title: "User Profile Management Endpoints"
+sidebarTitle: "Profile"
+description: "API reference for GET /api/users/me, PUT /edit-profile, POST /change-password, POST /upload-profile-picture, and DELETE /delete — manage the current user's account."
+---
+
+<Note>
+  All endpoints on this page require a valid JWT in the `Authorization` header.
+  Obtain a token from [`POST /api/users/login`](/api/users/register#post-apiuserslogin) or a social auth endpoint.
+  Include it as: `Authorization: Bearer <token>`
+</Note>
+
+---
+
+## GET /api/users/me
+
+Returns the full profile of the currently authenticated user. Sensitive fields (`password`, `verificationCode`, `verificationCodeExpires`, `codeRecuperation`, `codeExpiration`) are excluded from the response.
+
+### Request
+
+No request body. Authentication is via the `Authorization` header only.
+
+### Responses
+
+<ResponseField name="user" type="object">
+  <Expandable title="user fields">
+    <ResponseField name="_id" type="string">MongoDB ObjectId of the user.</ResponseField>
+    <ResponseField name="name" type="string">User's full name.</ResponseField>
+    <ResponseField name="email" type="string">User's email address (lowercase).</ResponseField>
+    <ResponseField name="phone" type="string">Phone number. Empty string if not set.</ResponseField>
+    <ResponseField name="pictureUrl" type="string">Cloudinary URL of the profile photo. Empty string if not set.</ResponseField>
+    <ResponseField name="isVerified" type="boolean">Whether the email address has been verified.</ResponseField>
+    <ResponseField name="provider" type="array">
+      Authentication providers linked to this account: `local`, `google`, and/or `facebook`.
+    </ResponseField>
+    <ResponseField name="role" type="string">Account role: `user`, `guest`, `admin`, or `tecnico`.</ResponseField>
+    <ResponseField name="active" type="boolean">Whether the account is active.</ResponseField>
+    <ResponseField name="pushTokens" type="array">Registered Expo push notification tokens.</ResponseField>
+    <ResponseField name="lastSync" type="string">ISO 8601 timestamp of the last data sync.</ResponseField>
+    <ResponseField name="createdAt" type="string">ISO 8601 timestamp of account creation.</ResponseField>
+    <ResponseField name="updatedAt" type="string">ISO 8601 timestamp of the last profile update.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Profile returned successfully. |
+| `401`  | Missing or malformed JWT. |
+| `403`  | JWT invalid or expired. |
+| `404`  | User not found in the database. |
+
+```bash
+curl -X GET https://api.dec-app.online/api/users/me \
+  -H "Authorization: Bearer <token>"
+```
+
+---
+
+## PUT /api/users/edit-profile
+
+Updates the authenticated user's `name` and/or `phone` number. Only the fields included in the request body are updated. Returns the updated user object with sensitive fields stripped.
+
+### Request body
+
+<ParamField body="name" type="string">
+  New display name. Optional — omit to leave the current name unchanged.
+</ParamField>
+
+<ParamField body="phone" type="string">
+  Phone number. Optional — omit to leave the current value unchanged.
+</ParamField>
+
+### Responses
+
+<ResponseField name="user" type="object">
+  Updated user document (same shape as `GET /api/users/me`, without sensitive fields).
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  `"Perfil actualizado"` on success.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Profile updated successfully. |
+| `401`  | Missing or malformed JWT. |
+| `403`  | JWT invalid or expired. |
+| `500`  | Server error. |
+
+```bash
+curl -X PUT https://api.dec-app.online/api/users/edit-profile \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Juan Camilo Perez",
+    "phone": "+573001234567"
+  }'
+```
+
+---
+
+## POST /api/users/change-password
+
+Changes the password for a form-registered (`local`) account. The current password is verified against the bcrypt hash before the new password is saved.
+
+### Request body
+
+<ParamField body="currentPassword" type="string" required>
+  The user's existing password. Verified against the stored bcrypt hash.
+</ParamField>
+
+<ParamField body="newPassword" type="string" required>
+  The desired new password. Must be at least 6 characters. Stored as a bcrypt hash (cost factor 10).
+</ParamField>
+
+### Responses
+
+<ResponseField name="message" type="string">
+  `"Contraseña actualizada correctamente"` on success.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Password changed successfully. |
+| `400`  | `currentPassword` does not match, or `newPassword` is too short. |
+| `401`  | Missing or malformed JWT. |
+| `403`  | JWT invalid or expired. |
+| `404`  | User record not found. |
+
+```bash
+curl -X POST https://api.dec-app.online/api/users/change-password \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "currentPassword": "OldPass123",
+    "newPassword": "NewPass456"
+  }'
+```
+
+---
+
+## POST /api/users/upload-profile-picture
+
+Uploads a new profile photo for the authenticated user. The image is held in memory by Multer, uploaded to Cloudinary, and the resulting URL is saved to the user's `pictureUrl` field.
+
+**Content-Type:** `multipart/form-data`
+
+### Request body
+
+<ParamField body="image" type="file" required>
+  The image file to upload. Sent as a `multipart/form-data` field named `image`. Common formats (JPEG, PNG, WebP) are accepted.
+</ParamField>
+
+### Responses
+
+<ResponseField name="pictureUrl" type="string">
+  Public Cloudinary URL of the newly uploaded profile photo.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  `"Foto actualizada"` on success.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Image uploaded and profile updated. |
+| `400`  | No file received in the request. |
+| `401`  | Missing or malformed JWT. |
+| `403`  | JWT invalid or expired. |
+| `500`  | Cloudinary upload failure. |
+
+```bash
+curl -X POST https://api.dec-app.online/api/users/upload-profile-picture \
+  -H "Authorization: Bearer <token>" \
+  -F "image=@/path/to/photo.jpg"
+```
+
+---
+
+## DELETE /api/users/delete
+
+Permanently deletes the authenticated user's account. Requires the account password as confirmation. Only applies to accounts registered with the local (`email + password`) method.
+
+### Request body
+
+<ParamField body="password" type="string" required>
+  The user's current password. Verified against the stored bcrypt hash before deletion proceeds.
+</ParamField>
+
+### Responses
+
+<ResponseField name="message" type="string">
+  Confirmation message including the deleted account's email address, e.g. `"Se ha eliminado la cuentica de juan.perez@gmail.com"`.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Account permanently deleted. |
+| `400`  | `password` field missing. |
+| `401`  | Password does not match. |
+| `403`  | JWT invalid or expired. |
+| `404`  | User not found. |
+
+```bash
+curl -X DELETE https://api.dec-app.online/api/users/delete \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"password": "Secure1234"}'
+```
+
+---
+
+## DELETE /api/users/delete-social
+
+Permanently deletes an account that was created or linked via Google or Facebook. No password is required — the authenticated JWT alone authorises the deletion.
+
+### Request
+
+No request body. Authentication is via the `Authorization` header only.
+
+### Responses
+
+<ResponseField name="message" type="string">
+  Confirmation message including the deleted account's email address, e.g. `"Se ha eliminado la cuentica de juan.perez@gmail.com"`.
+</ResponseField>
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Account permanently deleted. |
+| `400`  | User ID not found in JWT payload. |
+| `403`  | JWT invalid or expired. |
+| `404`  | User not found in the database. |
+
+```bash
+curl -X DELETE https://api.dec-app.online/api/users/delete-social \
+  -H "Authorization: Bearer <token>"
+```

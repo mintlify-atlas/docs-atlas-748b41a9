@@ -1,0 +1,72 @@
+---
+title: "DEC: AI-Powered Coffee Plant Disease Detection"
+sidebarTitle: "Introduction"
+description: "DEC is a cross-platform mobile app that uses on-device TensorFlow Lite AI to identify coffee plant diseases from camera images, with a REST API backend and admin dashboard."
+---
+
+DEC (Detección de Enfermedades en Cafetales) is an AI-powered, cross-platform application built to help **farmers and agronomists** detect diseases in coffee plants quickly and accurately. By pointing a smartphone camera at a coffee leaf, users receive an instant on-device diagnosis powered by a YOLOv11 model compiled to TensorFlow Lite — no internet connection required for inference. Detection results are stored locally, synced to the cloud, and surfaced in a web-based admin dashboard for operational oversight and reporting.
+
+## What DEC Does
+
+<CardGroup cols={2}>
+  <Card title="On-Device AI Detection" icon="brain" href="/architecture">
+    A YOLOv11 model exported as a TensorFlow Lite float16 binary runs entirely on the device using `react-native-fast-tflite`. Diagnoses are instant and work offline in the field, returning the detected pathology, confidence score, and recommended treatment.
+  </Card>
+  <Card title="Multi-Platform Support" icon="mobile-screen" href="/quickstart">
+    A single React Native + Expo codebase targets iOS, Android, and modern web browsers. Platform-specific features (native camera, SQLite, secure token storage) are abstracted behind Expo's universal API layer.
+  </Card>
+  <Card title="Detection History & Sync" icon="clock-rotate-left" href="/architecture">
+    Every detection is persisted to an on-device SQLite database first, then automatically synced to MongoDB through the REST API. Users can browse their full diagnosis history, view image thumbnails, and re-read treatment advice — even after reinstalling the app.
+  </Card>
+  <Card title="Admin Dashboard" icon="chart-line" href="/architecture">
+    A web-only React Native Web interface provides administrators with KPI counters, incidence trend charts, a geographic heat map of detections, user management, and multi-format data exports — all secured behind JWT-authenticated admin routes.
+  </Card>
+</CardGroup>
+
+## Technology Stack
+
+<Tabs>
+  <Tab title="Backend">
+    The server is a Node.js (ESM) application built on **Express v5**, connected to **MongoDB** via **Mongoose v9**. It runs on port **8089** by default and exposes a REST API consumed by both the mobile client and the web admin panel.
+
+    | Package | Role |
+    |---|---|
+    | `express` ^5.2.1 | HTTP server and routing |
+    | `mongoose` ^9.1.6 | MongoDB ODM and schema validation |
+    | `jsonwebtoken` ^9.0.3 | JWT issuance and verification |
+    | `bcryptjs` ^3.0.3 | Password hashing |
+    | `cloudinary` ^2.9.0 | Detection image upload and CDN delivery |
+    | `nodemailer` ^8.0.3 | Password recovery and transactional email |
+    | `multer` ^2.1.1 | Multipart image upload handling |
+    | `archiver` ^7.0.1 | ZIP export of detection history |
+    | `google-auth-library` ^10.6.2 | Google OAuth token verification |
+    | `cors` ^2.8.6 | Cross-origin request handling |
+    | `dotenv` ^17.2.4 | Environment variable management |
+  </Tab>
+  <Tab title="Frontend">
+    The client is a **React Native + Expo SDK 55** application written in JavaScript/JSX. State is managed through the **Context API**; navigation is handled by **React Navigation v7**.
+
+    | Package | Role |
+    |---|---|
+    | `react-native-fast-tflite` ^2.0.0 | On-device TensorFlow Lite inference |
+    | `expo-camera` ~55.0.15 | Camera capture on iOS, Android, and Web |
+    | `expo-sqlite` ~55.0.15 | Local detection history persistence |
+    | `expo-secure-store` ~55.0.13 | Secure JWT storage on mobile |
+    | `@react-native-google-signin/google-signin` ^16.1.2 | Google OAuth sign-in |
+    | `react-native-fbsdk-next` ^13.4.3 | Facebook SDK authentication |
+    | `@react-navigation/stack` ^7.8.2 | Stack-based screen navigation |
+    | `axios` ^1.13.5 | HTTP client with interceptors for auth |
+    | `expo-image-manipulator` ~55.0.15 | Pre-processing images before inference |
+    | `expo-notifications` ~55.0.20 | Push notification support |
+    | `recharts` ^3.8.1 | Chart rendering in the admin web view |
+    | `react-leaflet` ^4.2.1 | Interactive detection heat map |
+  </Tab>
+</Tabs>
+
+## Supported Platforms
+
+DEC ships as a **single unified codebase** that runs natively on **iOS** and **Android** via Expo's managed workflow, and as a **responsive progressive web app** in any modern browser. Production builds for iOS and Android are generated with Expo Application Services (`eas build`). The web build is produced via `expo export --platform web`. On mobile, the app uses the device camera and stores data in SQLite; on web, it falls back to `sessionStorage` for token management and the browser's `getUserMedia` API for camera access.
+
+<Card title="Ready to run DEC locally?" icon="rocket" href="/quickstart">
+  Follow the Quickstart guide to clone the repo, configure your environment variables, and run your first AI-powered coffee disease detection in under 10 minutes.
+</Card>

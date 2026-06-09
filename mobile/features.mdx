@@ -1,0 +1,133 @@
+---
+title: "DEC Mobile App Features and Screen Reference"
+sidebarTitle: "Features"
+description: "Complete reference for DEC's mobile screens: authentication, camera capture, AI detection results, history, profile management, notifications, and offline support."
+---
+
+The DEC mobile app provides coffee farmers and agronomists with a complete plant health toolkit — from AI-powered disease detection using an on-device YOLOv11 model to offline-first local storage, treatment tracking, scheduled reminders, and synchronized history. All functionality is available on iOS and Android; the web build delivers history browsing and an admin dashboard but omits on-device inference.
+
+## Authentication Screens
+
+<CardGroup cols={2}>
+  <Card title="Login" icon="right-to-bracket">
+    Sign in with **email and password**, **Google Sign-In** (via `@react-native-google-signin/google-signin`), or **Facebook** (via `react-native-fbsdk-next`). Tokens are stored securely with `expo-secure-store` on mobile and `sessionStorage` on web. Expired tokens trigger an automatic logout and redirect to this screen.
+  </Card>
+  <Card title="Register" icon="user-plus">
+    Two-step registration flow: the user submits their name, email, and password (`POST /api/users/register`), then enters a verification code sent to their inbox (`POST /api/users/verify-code`). The `VerifyCodeScreen` handles the second step.
+  </Card>
+  <Card title="Forgot Password" icon="key">
+    Email-based recovery split across two screens. **ForgotPassword** sends a one-time code (`POST /api/recover/req-code`). **ResetPassword** accepts the code and a new password (`POST /api/recover/change-pass`).
+  </Card>
+  <Card title="Onboarding" icon="star">
+    Shown on first launch using `react-native-onboarding-swiper`. Introduces the app's core capabilities before the user reaches the Login screen.
+  </Card>
+</CardGroup>
+
+## Core Detection Flow
+
+<Steps>
+  <Step title="Main screen — tap the camera button">
+    After login, the user lands on **MainApp** (the tab navigator). Tapping the camera shortcut navigates to the `Camera` stack screen.
+  </Step>
+  <Step title="Camera screen — capture or pick from gallery">
+    `CameraScreen` opens the rear-facing camera via `expo-camera`. A 220 × 220 pt dashed green reticle guides the user to center a single leaf in the frame. A loading overlay (`"Cargando inteligencia artificial..."`) is shown while the TFLite model initializes. The user can also import an image from the device gallery via `expo-image-picker`.
+  </Step>
+  <Step title="Preprocessing — image resized and normalized">
+    On capture, `expo-image-manipulator` crops the image to the reticle area and then resizes it to 640 × 640 pixels. An invisible `GLView` (Expo2DContext) rasterizes the asset and extracts a normalized `Float32Array` with pixel values in `[0, 1]`. See the [AI Detection](/mobile/ai-detection) page for the full pipeline.
+  </Step>
+  <Step title="Results screen — disease, confidence, and treatment">
+    `navigation.navigate('Result', { data })` passes the detection payload to the **Result** screen, which displays:
+    - **Disease name** (e.g., `Roya (Leaf Rust)`, `Cercospora`, `Minador de la hoja`, `Araña roja`, or `Planta Sana`)
+    - **Scientific name** (e.g., *Hemileia vastatrix*)
+    - **Confidence percentage** returned by the model
+    - **Brief description** of the pathology
+  </Step>
+  <Step title="Saved to SQLite history automatically">
+    The detection is persisted locally via `saveDetectionLocal()` from `dbService.js` into the `detections` table (`dec_app.db`). When the device is online, `syncService.js` uploads pending records to `POST /api/detections/save` and marks them as synced.
+  </Step>
+</Steps>
+
+## History & Profile Screens
+
+### History
+
+**HistoryScreen** (`src/screens/mobile/HistoryScreen.jsx`) displays all past analyses in a scrollable card list. Each card shows the captured leaf image, disease name, date (formatted with `Intl.DateTimeFormat` in `es-CO` locale), and confidence badge.
+
+- **Online mode**: fetches from `GET /api/detections/history?page=1&limit=100` and triggers a background `syncServerToLocal()` to keep SQLite current.
+- **Offline mode**: reads directly from the `remote_detections` SQLite table via `getAllRemoteDetections()`.
+- Pull-to-refresh re-syncs with the server when connected.
+- Tapping a card navigates to **DetectionDetail**.
+
+### Detection Detail
+
+**DetectionDetailScreen** (`src/screens/mobile/DetectionDetailScreen.jsx`) shows the full record for a single analysis:
+
+| Section | Details |
+|---------|---------|
+| Hero image | Full-width leaf photo with a colored badge (warning yellow for disease, success green for healthy) |
+| Confidence bar | Animated progress bar showing inference accuracy as a percentage |
+| Treatment log | Links to the associated `TreatmentLogScreen` entry, or a button to create one |
+| Suggested products | Modal listing recommended products (name, active ingredient, dose, price, supplier, link) pulled from `getPathologyWithRecommendations()` |
+| Reminders | Schedule a `expo-notifications` push reminder for follow-up; stored in the local `alarms` SQLite table |
+| Location | "Ver en mapa" button opens Google Maps at the detection's GPS coordinates (recorded from `expo-location`) |
+
+### Profile
+
+**Profile** displays the user's name, email, profile photo, total detections, and total treatment log entries. The counters come from the local `user_stats` SQLite table (synced on login). **EditProfile** allows updating the display name, phone number, and profile picture (uploaded to the backend via `multipart/form-data`).
+
+## Other Screens
+
+<CardGroup cols={2}>
+  <Card title="AlarmsScreen" icon="bell">
+    Lists all active scheduled reminders stored in the local `alarms` SQLite table. Users can deactivate or delete individual alarms. Each alarm is linked to a specific detection via `detection_id`.
+  </Card>
+  <Card title="Contact" icon="envelope">
+    A simple contact form that submits the user's name, email, and message to `POST /api/users/send-message`. Uses the `sendMessage()` helper from `api.js`.
+  </Card>
+  <Card title="Manual" icon="book">
+    An in-app user guide (HelpCenterScreen — `Centro`) that explains how to use the app, interpret results, and maintain the coffee plants.
+  </Card>
+  <Card title="Terms & Conditions" icon="file-lines">
+    `TermsScreen` is accessible from both the authenticated app stack and the pre-login auth stack, so users can review terms before registering.
+  </Card>
+</CardGroup>
+
+## Treatment Logbook (Bitácora)
+
+**TreatmentLogScreen** and **TreatmentFormScreen** provide a multi-product treatment journal linked to a specific detection. Each log entry stores:
+
+- **Disease name** targeted by the treatment
+- **General notes** about the crop condition
+- One or more **products** (name, dose, application date, notes)
+
+Logs are saved locally in the `treatment_logs` and `treatment_products` SQLite tables, then synced to `POST /api/treatments` (new) or `PUT /api/treatments/:id` (update) when online.
+
+## Navigation Structure
+
+The root `AppNavigator` renders different navigator trees based on platform:
+
+```
+AppNavigator (NavigationContainer)
+ ├── MobileNavigator     ← iOS / Android
+ │    ├── Auth Stack     (Login, Register, VerifyCode, ForgotPassword, ResetPassword, Terminos)
+ │    └── App Stack      (MainApp, Camera, Result, History, Contact, Profile, EditProfile,
+ │                        DetectionDetail, TreatmentLog, TreatmentForm, Centro, Terminos,
+ │                        Alarms, ProductForm)
+ └── WebNavigator.web    ← Browser
+      └── Web Stack      (LandingPage, LoginAdmin, AdminDashboard, Legal, DeletionStatus, …)
+```
+
+`MobileNavigator` uses a `createStackNavigator` with `headerShown: false` throughout. The active branch (Auth vs App Stack) is controlled by the `userToken` and `isGuest` values from `AuthContext`.
+
+## Offline Support
+
+<Note>
+  All detections and the pathology catalogue are stored in **SQLite** (`dec_app.db`) using `expo-sqlite`. When connectivity is restored, `syncService.js` automatically re-syncs in four passes:
+
+  1. `syncDetections()` — uploads locally saved detections to `POST /api/detections/save`
+  2. `syncServerToLocal()` — downloads the full detection history from `GET /api/detections/history` and merges into `remote_detections`
+  3. `syncLocalTreatments()` — pushes local treatment logs to the backend
+  4. `syncRemoteTreatments()` — downloads server-side treatment logs into local SQLite
+
+  `startAutoSync(token)` registers a `NetInfo` listener so synchronization begins automatically whenever an internet connection is detected, with exponential back-off retries (up to 3 attempts per item). The pathology catalogue (names, descriptions, treatments, recommended products) is also cached locally so the **Results** and **DetectionDetail** screens load instantly without a network request.
+</Note>

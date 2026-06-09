@@ -1,0 +1,89 @@
+---
+title: "Manage Users from the DEC Admin Dashboard"
+sidebarTitle: "User Management"
+description: "View, edit, ban, change roles, and delete user accounts from the DEC admin dashboard. Covers the Users tab UI and the underlying admin API endpoints."
+---
+
+The **Users** tab in the DEC admin dashboard provides full lifecycle management of every registered account. It calls the admin REST API directly — all mutations are reflected immediately in MongoDB and the UI updates optimistically in real time. Roles available in the system are `user`, `tecnico`, and `admin`.
+
+## Users tab features
+
+<CardGroup cols={2}>
+  <Card title="User table" icon="table">
+    Displays every account returned by `GET /api/admin/get-users` in a paginated table (10 rows per page). Each row shows the user's **avatar initial**, **display name**, **email**, **role badge**, and an active/banned status indicator. Clicking a row opens a detail view that lists all detections associated with that account.
+  </Card>
+  <Card title="Search and filter" icon="search">
+    A live search bar filters by **name** or **email** as you type. Additional filter strips let you narrow by role (`All`, `User`, `Tecnico`, `Admin`) and by status (`All`, `Active`, `Banned`). Results update instantly without a server round-trip.
+  </Card>
+  <Card title="Ban / Unban" icon="lock">
+    Clicking the lock icon on a non-admin row calls `PATCH /api/admin/toggle-ban/:id`. The server flips the user's `active` field — `true` to re-enable, `false` to ban. Banned users cannot log in but all their data is preserved.
+  </Card>
+  <Card title="Change role" icon="shield">
+    Tapping the role badge on any row opens a dropdown with the other available roles (`user`, `tecnico`, `admin`). Selecting one calls `PATCH /api/admin/change-role/:id` with `{ role }`. An admin cannot demote themselves.
+  </Card>
+  <Card title="Edit user details" icon="edit">
+    `PUT /api/admin/edit-user/:id` accepts `{ name, email }`. The server validates the name against a Spanish-language name regex and the email against a `@gmail.com/.co` pattern before saving.
+  </Card>
+  <Card title="Delete user" icon="trash">
+    The red trash icon triggers a confirmation modal. On confirmation, `DELETE /api/admin/delete-user/:id` permanently removes the account from MongoDB. Delete actions are blocked on admin accounts — the trash icon is hidden for them.
+  </Card>
+  <Card title="Export user list" icon="download">
+    The **Export CSV** button in the header serialises the current filtered view into a CSV with columns `ID`, `Name`, `Email`, `Role`, `Status`, `Registration Date`, and `Last Sync`, then triggers a browser download. No server call is needed.
+  </Card>
+  <Card title="Send custom email" icon="mail">
+    The envelope icon on each row opens an email composer modal. Submitting it calls `POST /api/admin/send-email` with `{ subject, message, emails: [user.email] }`. Email delivery is handled by **Resend** on the backend.
+  </Card>
+</CardGroup>
+
+## API reference summary
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/admin/get-users` | Return all user documents (passwords excluded) |
+| `PUT` | `/api/admin/edit-user/:id` | Update a user's `name` and `email` |
+| `DELETE` | `/api/admin/delete-user/:id` | Permanently delete a user account |
+| `PATCH` | `/api/admin/toggle-ban/:id` | Toggle the user's `active` field between `true` and `false` |
+| `PATCH` | `/api/admin/change-role/:id` | Set the user's `role` to `user`, `tecnico`, or `admin` |
+| `POST` | `/api/admin/send-email` | Send a custom HTML email to one or more users via Resend |
+
+All routes require a valid admin JWT. Requests without a token, or with a non-admin token, receive **HTTP 403**.
+
+## Sending custom emails
+
+Admins can send a formatted HTML email to a specific set of users — or to every user in the database — using the following endpoint:
+
+```http
+POST /api/admin/send-email
+Authorization: Bearer <admin_jwt>
+Content-Type: application/json
+```
+
+**Request body:**
+
+```json
+{
+  "subject": "Important update about your DEC account",
+  "message": "<p>We have updated our detection model. Please sync your app.</p>",
+  "emails": ["farmer@example.com", "technician@example.com"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `subject` | `string` | ✅ | Email subject line |
+| `message` | `string` | ✅ | HTML body content — injected inside a branded DEC template |
+| `emails` | `string[]` | ❌ | Specific recipient addresses. If omitted or empty, the email is sent to **all users** in the database |
+
+The server uses `Promise.allSettled` internally so a single failed delivery does not block the rest. The response includes a count of successful and failed sends:
+
+```json
+{
+  "message": "Correos enviados: 42 exitosos, 1 fallidos."
+}
+```
+
+## Ban behavior
+
+<Note>
+  Banning a user via `PATCH /api/admin/toggle-ban/:id` sets their `active` field to `false`. This prevents them from logging in, but their account record, all their detections, and all their messages remain in the database. To restore access, call the same endpoint again — the field is toggled back to `true`. The ban/unban action is never available for admin-role accounts; the UI hides the lock icon for those rows to prevent accidental lockout.
+</Note>

@@ -1,0 +1,325 @@
+---
+title: "Admin User Management API Endpoints"
+sidebarTitle: "Admin Users"
+description: "Admin-only REST endpoints to list, edit, ban, change roles, and delete users in DEC. All routes require a valid JWT with role: admin."
+---
+
+<Warning>
+  Every endpoint on this page requires `Authorization: Bearer <admin-token>` in the request header. The token must belong to a user whose `role` field equals `"admin"` in MongoDB. Any request carrying a non-admin token receives a **403 Forbidden** response: `{ "message": "Acceso denegado" }`. A missing or malformed token returns **401 Unauthorized**.
+</Warning>
+
+All admin user-management routes are mounted at `/api/admin` and protected by two middlewares in sequence: `verifyToken` (validates the JWT) and `onlyAdmin` (asserts `req.user.role === "admin"`).
+
+---
+
+## GET /api/admin/get-users
+
+Retrieve every registered user in the database. The `password` field is always stripped from the response.
+
+### Response
+
+<ResponseField name="message" type="string">
+  Human-readable confirmation string, e.g. `"Usuarios obtenidos"`.
+</ResponseField>
+
+<ResponseField name="users" type="array">
+  Array of user objects, one per registered account.
+
+  <Expandable title="User object fields">
+    <ResponseField name="_id" type="string">
+      MongoDB ObjectId of the user.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Full name of the user.
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      Email address (lowercase, trimmed).
+    </ResponseField>
+    <ResponseField name="phone" type="string">
+      Phone number; empty string if not provided.
+    </ResponseField>
+    <ResponseField name="pictureUrl" type="string">
+      Profile picture URL (Cloudinary or OAuth provider URL).
+    </ResponseField>
+    <ResponseField name="role" type="string">
+      User role. One of `"user"`, `"guest"`, `"tecnico"`, or `"admin"`.
+    </ResponseField>
+    <ResponseField name="active" type="boolean">
+      `true` if the account is enabled; `false` if banned.
+    </ResponseField>
+    <ResponseField name="isVerified" type="boolean">
+      Whether the user has verified their email address.
+    </ResponseField>
+    <ResponseField name="provider" type="array of string">
+      Registration origins, e.g. `["local"]`, `["google"]`, `["facebook"]`.
+    </ResponseField>
+    <ResponseField name="pushTokens" type="array of string">
+      Expo push notification tokens registered for this account.
+    </ResponseField>
+    <ResponseField name="lastSync" type="string (ISO 8601)">
+      Timestamp of the most recent mobile sync event.
+    </ResponseField>
+    <ResponseField name="createdAt" type="string (ISO 8601)">
+      Account creation timestamp (added by Mongoose `timestamps`).
+    </ResponseField>
+    <ResponseField name="updatedAt" type="string (ISO 8601)">
+      Last document update timestamp.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET http://localhost:8089/api/admin/get-users \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+```json
+{
+  "message": "Usuarios obtenidos",
+  "users": [
+    {
+      "_id": "664a1f2e3b9e4c001f8d2a11",
+      "name": "Ana López",
+      "email": "ana@gmail.com",
+      "phone": "",
+      "pictureUrl": "",
+      "role": "user",
+      "active": true,
+      "isVerified": true,
+      "provider": ["local"],
+      "pushTokens": [],
+      "lastSync": "2025-04-10T14:23:00.000Z",
+      "createdAt": "2025-01-15T09:00:00.000Z",
+      "updatedAt": "2025-04-10T14:23:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## PUT /api/admin/edit-user/:id
+
+Update the `name` and/or `email` of a specific user. Both fields are required and validated against server-side regex rules (name: 2–15 alphabetic characters per word; email: valid `@gmail.com` or `@gmail.co` format).
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  MongoDB ObjectId of the user to update.
+</ParamField>
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  Updated full name. Must match the pattern `^[a-zA-ZáéíóúÁÉÍÓÚñÑ]{2,15}(\s[a-zA-ZáéíóúÁÉÍÓÚñÑ]{2,15})?$`.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Updated email address. Must be a valid `@gmail.com` or `@gmail.co` address not already in use by another account.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Confirmation string `"Usuario editado exitosamente"` on success.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X PUT http://localhost:8089/api/admin/edit-user/664a1f2e3b9e4c001f8d2a11 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Ana García", "email": "ana.garcia@gmail.com"}'
+```
+
+```json
+{ "message": "Usuario editado exitosamente" }
+```
+
+---
+
+## DELETE /api/admin/delete-user/:id
+
+Permanently delete a user document from the database. This action is irreversible.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  MongoDB ObjectId of the user to delete.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  `"Usuario eliminado exitosamente"` on success. Returns `400` with `"No se encontró el usuario a eliminar"` if the id does not match any document.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X DELETE http://localhost:8089/api/admin/delete-user/664a1f2e3b9e4c001f8d2a11 \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+```json
+{ "message": "Usuario eliminado exitosamente" }
+```
+
+---
+
+## PATCH /api/admin/toggle-ban/:id
+
+Toggle the `active` flag of a user account. If the user is currently active (`active: true`), this sets it to `false` (banned). If the user is already inactive, this re-enables the account.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  MongoDB ObjectId of the user whose ban status should be toggled.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  `"Usuario inhabilitado exitosamente"` when banning, or `"Usuario habilitado exitosamente"` when unbanning.
+</ResponseField>
+
+<ResponseField name="active" type="boolean">
+  The new value of the `active` flag after the toggle.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  The full updated user document (password excluded).
+</ResponseField>
+
+### Example
+
+```bash
+curl -X PATCH http://localhost:8089/api/admin/toggle-ban/664a1f2e3b9e4c001f8d2a11 \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+```json
+{
+  "message": "Usuario inhabilitado exitosamente",
+  "active": false,
+  "user": {
+    "_id": "664a1f2e3b9e4c001f8d2a11",
+    "name": "Ana García",
+    "email": "ana.garcia@gmail.com",
+    "role": "user",
+    "active": false
+  }
+}
+```
+
+---
+
+## PATCH /api/admin/change-role/:id
+
+Change a user's role. Valid roles are `"user"`, `"tecnico"`, and `"admin"`. An admin cannot downgrade their own role away from `"admin"`.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  MongoDB ObjectId of the user whose role should be changed.
+</ParamField>
+
+### Request Body
+
+<ParamField body="role" type="string" required>
+  The new role to assign. Must be one of: `"user"`, `"tecnico"`, `"admin"`.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  `"Rol actualizado correctamente"` on success.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  The full updated user document (password excluded), reflecting the new `role` value.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X PATCH http://localhost:8089/api/admin/change-role/664a1f2e3b9e4c001f8d2a11 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "tecnico"}'
+```
+
+```json
+{
+  "message": "Rol actualizado correctamente",
+  "user": {
+    "_id": "664a1f2e3b9e4c001f8d2a11",
+    "name": "Ana García",
+    "email": "ana.garcia@gmail.com",
+    "role": "tecnico",
+    "active": true
+  }
+}
+```
+
+---
+
+## POST /api/admin/send-email
+
+Send a custom HTML email to one or more users via the [Resend](https://resend.com) email service. If `emails` is omitted or empty, the message is broadcast to **all** users in the database. The backend uses `Promise.allSettled`, so a failure for one address does not cancel the remaining sends.
+
+### Request Body
+
+<ParamField body="subject" type="string" required>
+  Email subject line.
+</ParamField>
+
+<ParamField body="message" type="string" required>
+  HTML or plain-text body content injected into the DEC-branded email template.
+</ParamField>
+
+<ParamField body="emails" type="array of string">
+  Optional list of recipient email addresses. When omitted (or passed as an empty array), the email is sent to every user's address retrieved from the database.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Summary string, e.g. `"Correos enviados: 42 exitosos, 0 fallidos."`.
+</ResponseField>
+
+### Example — send to specific addresses
+
+```bash
+curl -X POST http://localhost:8089/api/admin/send-email \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject": "Alerta de nueva enfermedad detectada",
+    "message": "<p>Se ha registrado un brote de <strong>Roya del Cafeto</strong> en la región. Revise sus cultivos.</p>",
+    "emails": ["farmer1@gmail.com", "farmer2@gmail.com"]
+  }'
+```
+
+```json
+{ "message": "Correos enviados: 2 exitosos, 0 fallidos." }
+```
+
+### Example — broadcast to all users
+
+```bash
+curl -X POST http://localhost:8089/api/admin/send-email \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject": "Mantenimiento programado",
+    "message": "<p>El servicio estará en mantenimiento el sábado de 2am a 4am UTC.</p>"
+  }'
+```
+
+```json
+{ "message": "Correos enviados: 128 exitosos, 0 fallidos." }
+```

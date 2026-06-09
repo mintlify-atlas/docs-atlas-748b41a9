@@ -1,0 +1,365 @@
+---
+title: "Authentication System in the DEC Backend"
+sidebarTitle: "Authentication"
+description: "How DEC implements JWT-based session management, email/password registration with code verification, Google OAuth, Facebook Login, and role-based access control."
+---
+
+DEC supports four distinct authentication paths: **email/password registration** with two-step email verification, **Google OAuth**, **Facebook Login**, and **password recovery**. All four paths ultimately issue a signed **JSON Web Token (JWT)** that the client stores and attaches to every subsequent authenticated request. Token validation is handled centrally by the `verifyToken` middleware in `middlewares/auth.js`, keeping all route handlers free of authentication logic.
+
+---
+
+## JWT Middleware
+
+The `middlewares/auth.js` file exports two middleware functions that protect routes.
+
+### `verifyToken`
+
+`verifyToken` intercepts every request to a protected route and validates the JWT before the request reaches the controller:
+
+```js
+// middlewares/auth.js
+import jwt from "jsonwebtoken";
+
+export const verifyToken = (req, res, next) => {
+    const authHeader = req.header("Authorization");
+    const token = authHeader && authHeader.split(" ")[1];
+    if (!token) {
+        return res.status(401).json({ message: "Acceso denegado. No hay token." });
+    }
+    try {
+        const verified = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = verified; // { id, role } decoded from the token
+        next();
+    } catch (error) {
+        res.status(403).json({ message: "Token inválido o expirado." });
+    }
+};
+```
+
+Pass the token in the `Authorization` header using the `Bearer` scheme:
+
+```
+Authorization: Bearer <your_jwt_token>
+```
+
+If no token is provided, the server responds with `401 Unauthorized`. If the token is present but invalid or expired, the server responds with `403 Forbidden`. On success, the decoded payload (`{ id, role }`) is attached to `req.user` and is available to all downstream middleware and controllers.
+
+### `onlyAdmin`
+
+`onlyAdmin` is applied **after** `verifyToken` on admin-only routes. It checks whether the `role` field in the decoded token is `"admin"`:
+
+```js
+export const onlyAdmin = (req, res, next) => {
+    if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Acceso denegado" });
+    }
+    next();
+};
+```
+
+Example usage in a route file:
+
+```js
+router.get("/admin/users", verifyToken, onlyAdmin, getAllUsers);
+```
+
+---
+
+## Email Registration Flow
+
+New users register with their name, email, and password. The server creates the account in a **pending / unverified** state, sends a 6-digit verification code to the provided email address via the Resend API, and only activates the account once the code is confirmed. Passwords are hashed with `bcryptjs` (10 salt rounds) before being stored.
+
+<Steps>
+  <Step title="Submit registration details">
+    Send a `POST` request to `/api/users/register` with the user's name, email, and password. The server validates the input, hashes the password, saves the user with `isVerified: false`, generates a 6-digit code, and emails it to the user. The code expires after **30 minutes**.
+
+    ```http
+    POST /api/users/register
+    Content-Type: application/json
+
+    {
+      "name": "Juan Pérez",
+      "email": "juan@gmail.com",
+      "password": "MiPass123"
+    }
+    ```
+
+    **Success response (`201`):**
+    ```json
+    {
+      "message": "Se ha enviado el código de verificación a tu correo"
+    }
+    ```
+  </Step>
+
+  <Step title="Verify the email code">
+    The user checks their inbox and submits the 6-digit code to `POST /api/users/verify-code`. The server looks up the user by email and code, confirms the code has not expired, sets `isVerified: true`, and clears the verification fields.
+
+    ```http
+    POST /api/users/verify-code
+    Content-Type: application/json
+
+    {
+      "email": "juan@gmail.com",
+      "code": "483920"
+    }
+    ```
+
+    **Success response (`200`):**
+    ```json
+    {
+      "message": "Cuenta verificada con éxito"
+    }
+    ```
+  </Step>
+
+  <Step title="Log in and receive a JWT">
+    Once verified, the user can log in at `POST /api/users/login`. The server validates the password with `bcrypt.compare`, checks that `isVerified` is `true`, and issues a JWT signed with `JWT_SECRET` that expires in **30 days**.
+
+    ```http
+    POST /api/users/login
+    Content-Type: application/json
+
+    {
+      "email": "juan@gmail.com",
+      "password": "MiPass123"
+    }
+    ```
+
+    **Success response (`200`):**
+    ```json
+    {
+      "message": "Bienvenido, JUAN PÉREZ",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "user": {
+        "id": "64a1f2c3d4e5f60012345678",
+        "name": "Juan Pérez",
+        "email": "juan@gmail.com",
+        "role": "user"
+      }
+    }
+    ```
+
+    Store the `token` value on the client and send it in the `Authorization: Bearer <token>` header on all subsequent authenticated requests.
+  </Step>
+</Steps>
+
+---
+
+## Google OAuth Flow
+
+Users who sign in with their Google account send the **Google ID token** (obtained client-side via Google Sign-In) to the backend. The server verifies the token against Google's public keys using `google-auth-library`, then either creates a new user record or links the Google identity to an existing account with the same email address.
+
+**Endpoint:** `POST /api/users/auth/google`
+
+The Google ID token must be placed in the `Authorization` header as a Bearer token — not in the request body:
+
+```http
+POST /api/users/auth/google
+Authorization: Bearer <google_id_token>
+```
+
+**Success response (`200`):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "64a1f2c3d4e5f60012345678",
+    "name": "Juan Pérez",
+    "email": "juan@gmail.com",
+    "provider": ["google"],
+    "pictureUrl": "https://lh3.googleusercontent.com/...",
+    "role": "user"
+  }
+}
+```
+
+The server verifies the token against both `GOOGLE_WEB_CLIENT_ID` and `GOOGLE_APP_CLIENT_ID`, so tokens from both the web and mobile clients are accepted. If an existing local (email/password) account has the same email address, the Google identity is linked to it and the `provider` array is updated (e.g. `["local", "google"]`) — preventing duplicate accounts.
+
+---
+
+## Facebook Auth Flow
+
+Users who sign in with Facebook send their **Facebook access token** (obtained client-side via the Facebook SDK) to the backend. The server calls the Facebook Graph API to retrieve the user's `id`, `name`, `email`, and `picture`, then creates or links the account in MongoDB.
+
+**Endpoint:** `POST /api/users/auth/facebook`
+
+The Facebook access token must be sent as a Bearer token in the `Authorization` header:
+
+```http
+POST /api/users/auth/facebook
+Authorization: Bearer <facebook_access_token>
+```
+
+**Success response (`200`):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "64a1f2c3d4e5f60012345678",
+    "name": "Juan Pérez",
+    "email": "juan@gmail.com",
+    "provider": ["facebook"],
+    "pictureUrl": "https://platform-lookaside.fbsbx.com/...",
+    "role": "user"
+  }
+}
+```
+
+As with Google, if a local account already exists with the same email address, the Facebook identity is linked to it rather than creating a duplicate record.
+
+### Facebook Data Deletion Callback
+
+Meta requires apps to provide a data-deletion endpoint. When a user removes the app from their Facebook settings, Meta sends a signed `POST` request to:
+
+```
+POST /api/users/auth/facebook-deletion
+```
+
+The server validates the HMAC-SHA256 signature using `FACEBOOK_APP_SECRET`, decodes the `signed_request` payload, looks up the user by their `facebookId`, and permanently deletes the document from MongoDB. The response conforms to the format Meta requires (a confirmation URL and a tracking code).
+
+---
+
+## Password Recovery Flow
+
+Users who have forgotten their password can request a recovery code via email. The flow uses the Resend API to send a 6-digit code, which must be submitted alongside the new password.
+
+<Steps>
+  <Step title="Request a recovery code">
+    Send the user's registered email to `POST /api/recover/`. The server looks up the account, generates a 6-digit code, stores it with a **15-minute** expiry (`codeExpiration`), and emails it via Resend.
+
+    ```http
+    POST /api/recover/
+    Content-Type: application/json
+
+    {
+      "email": "juan@gmail.com"
+    }
+    ```
+
+    **Success response (`200`):**
+    ```json
+    {
+      "message": "Si existe el correo, recibirás un código de verificación"
+    }
+    ```
+
+    The generic message is intentional — it avoids leaking whether a given email address is registered.
+  </Step>
+
+  <Step title="Submit the code and new password">
+    Once the user has the code from their inbox, submit the email, code, and new password to `POST /api/recover/change-password`. The server validates the code, hashes the new password with bcrypt, saves it, clears the recovery fields, and sends a confirmation email.
+
+    ```http
+    POST /api/recover/change-password
+    Content-Type: application/json
+
+    {
+      "email": "juan@gmail.com",
+      "code": "738291",
+      "newPass": "NuevaPass456"
+    }
+    ```
+
+    **Success response (`200`):**
+    ```json
+    {
+      "message": "Contraseña actualizada exitosamente. Ya puedes iniciar sesión con tu nueva contraseña"
+    }
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Role-Based Access Control
+
+Each user document in MongoDB has a `role` field. The two supported roles are:
+
+| Role | Description |
+|------|-------------|
+| `user` | Default role assigned at registration (email, Google, or Facebook). Can access their own profile, detection history, and notifications. |
+| `admin` | Elevated role. Can access the admin dashboard, view all users and detections, manage pathologies, and view platform-wide statistics. |
+
+The `role` value is embedded in the JWT payload at sign-in:
+
+```js
+const token = jwt.sign(
+    { id: user._id, role: user.role || 'user' },
+    process.env.JWT_SECRET,
+    { expiresIn: '30d' }
+);
+```
+
+Admin-only routes are protected by stacking `verifyToken` and `onlyAdmin`:
+
+```js
+// Only accessible to users with role === "admin"
+router.get("/api/admin/users", verifyToken, onlyAdmin, getAllUsers);
+```
+
+Any request from a `user`-role token to an admin-only route receives:
+
+```json
+{
+  "message": "Acceso denegado"
+}
+```
+
+To promote a user to admin, update the `role` field in MongoDB directly or through an existing admin-privileged API call.
+
+---
+
+## Login Request and Response Reference
+
+**Request:**
+
+```http
+POST /api/users/login
+Content-Type: application/json
+
+{
+  "email": "juan@gmail.com",
+  "password": "MiPass123"
+}
+```
+
+**Success response (`200 OK`):**
+
+```json
+{
+  "message": "Bienvenido, JUAN PÉREZ",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY0YTFmMmMzZDRlNWY2MDAxMjM0NTY3OCIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzE4MDAwMDAwLCJleHAiOjE3MjA1OTIwMDB9.SIGNATURE",
+  "user": {
+    "id": "64a1f2c3d4e5f60012345678",
+    "name": "Juan Pérez",
+    "email": "juan@gmail.com",
+    "role": "user"
+  }
+}
+```
+
+**Unverified account response (`403 Forbidden`):**
+
+```json
+{
+  "message": "Cuenta no verificada. Por favor, revisa tu correo.",
+  "verified": false,
+  "email": "juan@gmail.com"
+}
+```
+
+**Wrong credentials response (`400 Bad Request`):**
+
+```json
+{
+  "message": "Contraseña incorrecta"
+}
+```
+
+Once the `token` is received, include it in the `Authorization` header for all protected endpoints:
+
+```http
+GET /api/users/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```

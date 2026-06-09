@@ -1,0 +1,150 @@
+{
+  "projectType": "saas",
+  "projectName": "DEC – Coffee Disease Detection",
+  "projectDescription": "A cross-platform mobile and web application that uses AI (TensorFlow Lite / YOLOv11) to detect and diagnose diseases in coffee plants from captured images, with a REST API backend and an admin dashboard.",
+  "theme": "palm",
+  "primaryColor": "#16a34a",
+  "lightColor": "#22c55e",
+  "darkColor": "#0f2d1a",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Backend Setup",
+            "pages": [
+              "backend/installation",
+              "backend/configuration",
+              "backend/authentication"
+            ]
+          },
+          {
+            "group": "Mobile App",
+            "pages": [
+              "mobile/installation",
+              "mobile/features",
+              "mobile/ai-detection"
+            ]
+          },
+          {
+            "group": "Admin Dashboard",
+            "pages": [
+              "admin/overview",
+              "admin/user-management",
+              "admin/detections-export"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/data-sync",
+              "guides/notifications",
+              "guides/production-build"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Users",
+            "pages": [
+              "api/users/register",
+              "api/users/profile"
+            ]
+          },
+          {
+            "group": "Detections",
+            "pages": [
+              "api/detections/create",
+              "api/detections/history"
+            ]
+          },
+          {
+            "group": "Admin",
+            "pages": [
+              "api/admin/users",
+              "api/admin/stats",
+              "api/admin/export"
+            ]
+          },
+          {
+            "group": "Catalog",
+            "pages": [
+              "api/pathologies",
+              "api/treatments"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "AI-powered disease detection using TensorFlow Lite (YOLOv11 base model) on mobile",
+    "Cross-platform support: iOS, Android, and responsive web via React Native + Expo",
+    "Multi-provider authentication: email/password, Google OAuth, Facebook SDK with JWT",
+    "Detection history stored locally in SQLite with automatic MongoDB sync",
+    "Admin web dashboard with user management, detection review, heatmaps, and KPI charts",
+    "Dataset export (ZIP archive) for admin-approved detections",
+    "Push notifications via Expo Notifications",
+    "Image upload and storage via Cloudinary",
+    "Password recovery flow via Nodemailer / SMTP",
+    "Role-based access control (user vs. admin) with middleware guards"
+  ],
+  "publicApiSurface": [
+    "POST   /api/users/register",
+    "POST   /api/users/verify-code",
+    "POST   /api/users/login",
+    "POST   /api/users/auth/google",
+    "POST   /api/users/auth/facebook",
+    "GET    /api/users/me",
+    "PUT    /api/users/edit-profile",
+    "POST   /api/users/change-password",
+    "POST   /api/users/upload-profile-picture",
+    "DELETE /api/users/delete",
+    "POST   /api/detections/save",
+    "GET    /api/detections/history",
+    "DELETE /api/detections/delete-detection:id",
+    "DELETE /api/detections/clear-history",
+    "GET    /api/detections/count",
+    "GET    /api/pathologies/",
+    "GET    /api/treatments/",
+    "POST   /api/recover/",
+    "GET    /api/messages/",
+    "GET    /api/notifications/",
+    "GET    /api/admin/get-users",
+    "PUT    /api/admin/edit-user/:id",
+    "DELETE /api/admin/delete-user/:id",
+    "GET    /api/admin/get-detections",
+    "DELETE /api/admin/delete-detection/:id",
+    "GET    /api/admin/get-pathologies",
+    "PUT    /api/admin/edit-pathology/:id",
+    "PATCH  /api/admin/toggle-ban/:id",
+    "PATCH  /api/admin/toggle-approve/:id",
+    "PATCH  /api/admin/change-role/:id",
+    "POST   /api/admin/send-email",
+    "GET    /api/admin/export/start",
+    "GET    /api/admin/export/status/:jobId",
+    "GET    /api/admin/export/download/:jobId",
+    "GET    /api/stats/incidence",
+    "GET    /api/stats/map",
+    "GET    /api/stats/kpis"
+  ]
+}

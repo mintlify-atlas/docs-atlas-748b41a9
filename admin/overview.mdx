@@ -1,0 +1,50 @@
+---
+title: "DEC Admin Dashboard: Features and Navigation"
+sidebarTitle: "Overview"
+description: "The DEC admin dashboard provides user management, detection review, disease catalog editing, incidence heatmaps, KPI tiles, and dataset export from a web browser."
+---
+
+The DEC admin dashboard is a **web-only panel** that becomes available when the Expo app runs inside a browser. It is built with React Native Web and lives in the same Expo codebase as the mobile app — no separate deployment is required. Access is restricted to accounts whose `role` field equals `admin`; any user with a different role is turned away at the login screen with an **"Acceso Denegado"** error before a session is ever created.
+
+## Accessing the dashboard
+
+<Steps>
+  <Step title="Start the Expo app in a browser">
+    Inside the `frontend/DEC` directory, run `npm start` and then press `w` to open the web build, or serve a production web build with `expo export --platform web`.
+  </Step>
+  <Step title="Navigate to the admin login screen">
+    Open the app URL in your browser. From the landing page, navigate to the **Admin Login** screen (`LoginAdmin.web.jsx`). The route is registered as `AdminLogin` in the navigation stack.
+  </Step>
+  <Step title="Sign in with an admin account">
+    Enter the email and password for an account that has `role: "admin"` in MongoDB. The login flow calls `POST /api/users/login`, checks `user.role`, and redirects non-admin accounts immediately.
+  </Step>
+  <Step title="The dashboard opens with tab navigation">
+    After a successful login, the app navigates to `AdminDashboard`. Five tabs appear at the top of the screen — **Dashboard**, **Users**, **Detections**, **Catalog**, and **Heatmap**.
+  </Step>
+</Steps>
+
+## Dashboard tabs
+
+<CardGroup cols={2}>
+  <Card title="Dashboard" icon="chart-bar">
+    Displays four KPI tiles — **Total Users**, **Total Detections**, **Total Pathologies**, and **Average Confidence** — each with a trend badge comparing the current period to the previous one. Below the tiles, two bar charts show disease distribution and monthly detection volume for the last six months, plus a seven-day weekly trend chart and a Top-5 pathologies list. A date-range filter controls all charts, and an **Export PDF** button captures the entire view via `html2canvas` and `jsPDF`.
+  </Card>
+  <Card title="Users" icon="users">
+    A paginated table of every registered user (10 per page) with columns for name, email, role, and active status. Admins can search by name or email, filter by role (`user`, `tecnico`, `admin`) or status (active / banned), export the list as a CSV file, toggle a user's ban state, promote or demote their role, send a custom email, view their individual detections, and permanently delete the account.
+  </Card>
+  <Card title="Detections" icon="camera">
+    A split-panel audit screen: the left side shows a paginated list of all detections (sorted by confidence score) with thumbnail, disease label, confidence percentage, and approval badge. Clicking a row opens a full-size image inspector on the right with location coordinates, a link to open the point in Google Maps, and action buttons to **approve for dataset** (`PATCH /api/admin/toggle-approve/:id`) or permanently delete the record. An **Export Dataset** button starts an async ZIP download of all approved detections.
+  </Card>
+  <Card title="Catalog" icon="book-open">
+    A master-detail view of every pathology stored in MongoDB. Selecting a disease on the left loads its full record on the right, where admins can edit the **name**, **description** (symptoms), **treatment protocol**, **alert status** (toggle), and **recommended inputs** (product name, dose, price, supplier, link). Clicking **Editar Ficha** unlocks all fields; clicking **Guardar** saves via `PUT /api/admin/edit-pathology/:id`. A separate **upload overlay** replaces the reference image via `POST /api/admin/upload-pathology-image/:id` (Cloudinary). An **Emitir Alerta Push** button creates an in-app notification for all users.
+  </Card>
+  <Card title="Heatmap" icon="map-pin">
+    A geographic map rendered with **Leaflet** (loaded lazily on web only) overlaid on a GeoJSON layer of municipal districts. Each approved detection appears as a coloured circle whose radius is proportional to the confidence score and whose colour follows a blue → green → amber → red severity scale. Admins can filter by disease, month, and date range, and adjust the maximum circle radius with a slider. The map can be exported as a PNG image via `html2canvas`.
+  </Card>
+</CardGroup>
+
+## Role requirement
+
+<Warning>
+  All admin API routes are guarded by the `onlyAdmin` middleware. Every request must carry a valid JWT (issued at login) **and** the decoded payload must contain `role: "admin"`. Sending a request with a non-admin JWT — or no token at all — returns **HTTP 403 Forbidden**. This applies to every endpoint under `/api/admin/` as well as all three endpoints under `/api/stats/`.
+</Warning>

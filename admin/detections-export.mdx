@@ -1,0 +1,119 @@
+---
+title: "Review Detections and Export Datasets in DEC"
+sidebarTitle: "Detections & Export"
+description: "Approve or reject user detections from the admin panel, then export the approved dataset as a ZIP archive for model retraining using the DEC export API."
+---
+
+The **Detections** tab lets admins review every detection submitted by users across all accounts, approve or reject individual records, and export the curated set as a ZIP archive ready for YOLOv11 model retraining. The tab is split into two panels: a paginated list on the left and a full-size image inspector on the right.
+
+## Detections tab features
+
+Every detection record returned by `GET /api/admin/get-detections` appears in the list, populated with the linked pathology name. Each row shows a thumbnail, the detected disease, the confidence score, the submission date, and a green checkmark badge if the record has already been approved.
+
+- **Approve / Unapprove** — selecting a detection in the inspector exposes an **Approve for Dataset** button. Clicking it calls `PATCH /api/admin/toggle-approve/:id`, which toggles the `approved` boolean on the `Detection` document. Calling the endpoint a second time reverts the approval. Only approved detections are included in dataset exports.
+- **Delete detection** — the trash icon in the inspector calls `DELETE /api/admin/delete-detection/:id` and permanently removes the record from MongoDB. A browser `confirm()` dialog is shown before the request is sent.
+- **Sort by confidence** — a toggle in the list header switches the sort order between highest-confidence-first and lowest-confidence-first.
+- **Date filters** — `startDate` and `endDate` inputs narrow the list to detections submitted within a chosen range. Clearing both inputs restores the full list.
+- **Open in maps** — a map card in the inspector shows the GeoJSON `[longitude, latitude]` coordinates stored with the detection and opens Google Maps on click.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/admin/get-detections` | Return all detections, populated with pathology name |
+| `PATCH` | `/api/admin/toggle-approve/:id` | Toggle the `approved` flag on a detection |
+| `DELETE` | `/api/admin/delete-detection/:id` | Permanently remove a detection |
+
+## Dataset export workflow
+
+<Steps>
+  <Step title="Approve detections in the Detections tab">
+    Use the inspector to review each detection image, confidence score, and GPS location. Click **Approve for Dataset** on every record you want included. The running count of approved images is displayed in the header card above the list. Only records with `approved: true` are included in the export — unapproved and rejected records are always skipped.
+  </Step>
+  <Step title="Click Export Dataset to start the async job">
+    Click the **Exportar Dataset** button (top-right of the Detections tab). The UI calls:
+
+    ```http
+    GET /api/admin/export/start?startDate=2024-01-01&endDate=2024-12-31
+    Authorization: Bearer <admin_jwt>
+    ```
+
+    The optional `startDate` / `endDate` query parameters further narrow which approved detections are included. The server creates an in-memory job entry, assigns it a UUID, and immediately returns:
+
+    ```json
+    { "jobId": "e3b0c442-98fc-1c14-9afb-4c8996fb924" }
+    ```
+
+    The actual packaging runs asynchronously in the background via `processExport()`.
+  </Step>
+  <Step title="Poll the status endpoint until complete">
+    The frontend polls every second using the returned `jobId`:
+
+    ```http
+    GET /api/admin/export/status/:jobId
+    Authorization: Bearer <admin_jwt>
+    ```
+
+    The response reports the current state:
+
+    ```json
+    {
+      "status": "processing",
+      "total": 84,
+      "processed": 37,
+      "message": "Procesando imagen 37 de 84"
+    }
+    ```
+
+    Possible `status` values are `preparing`, `processing`, `completed`, and `error`. A progress bar and percentage counter are shown in the export modal while `status` is `processing`.
+  </Step>
+  <Step title="Download the ZIP once status is complete">
+    When `status` becomes `completed`, the frontend automatically triggers:
+
+    ```http
+    GET /api/admin/export/download/:jobId
+    Authorization: Bearer <admin_jwt>
+    ```
+
+    The server streams the ZIP file back with the filename `dataset_<jobId>.zip`, then deletes both the in-memory job entry and the temporary file from the server's `temp_exports/` directory. The browser receives the file as a blob and saves it via a synthetic `<a>` element click.
+  </Step>
+</Steps>
+
+## Export format
+
+The downloaded ZIP is built with the **`archiver`** library at compression level 9 and contains two artefacts:
+
+- **`metadata.csv`** — one row per approved detection with columns: `id`, `pathology`, `confidence`, `date`, `latitude`, `longitude`, `imageUrl`. This CSV provides the annotation data needed by training pipelines.
+- **`images/`** — a flat directory containing one image file per detection named `<detection_id>.<ext>`. Images are downloaded directly from their Cloudinary URLs during the export job and streamed into the archive without being fully buffered in memory. If a single image download fails, it is skipped and the export continues.
+
+The combination of `metadata.csv` annotations and the `images/` folder is sufficient to construct a labelled dataset for YOLOv11 fine-tuning.
+
+## Stats API
+
+Three additional read-only endpoints feed the Dashboard tab KPI tiles and charts. All three require the `onlyAdmin` middleware.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/stats/kpis` | Returns `totalUsers`, `totalDetections`, `totalPathologies`, and `avgConfidence` (mean across all detections) |
+| `GET` | `/api/stats/incidence` | Returns detections grouped by disease over time. Accepts `startDate`, `endDate`, and `groupBy` (`day` \| `week` \| `month`) query parameters. Data is formatted for direct use with Recharts. |
+| `GET` | `/api/stats/map` | Returns an array of detection coordinates with `lat`, `lng`, `disease`, `confidence`, and `date` fields for the Leaflet heatmap. Accepts `startDate` and `endDate` query parameters. Defaults to the last 30 days when no dates are provided. |
+
+**Example KPI response:**
+
+```json
+{
+  "totalUsers": 214,
+  "totalDetections": 1053,
+  "totalPathologies": 6,
+  "avgConfidence": 0.847
+}
+```
+
+**Example incidence query:**
+
+```http
+GET /api/stats/incidence?startDate=2024-06-01&endDate=2024-06-30&groupBy=day
+Authorization: Bearer <admin_jwt>
+```
+
+<Tip>
+  Review and approve new detections regularly — ideally after each sync cycle — so the training dataset grows steadily over time. A larger, more diverse set of approved images directly improves the accuracy of the YOLOv11 model on the next retraining run. The approved-count badge at the top of the Detections tab makes it easy to track how many images are queued for the next export.
+</Tip>

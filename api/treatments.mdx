@@ -1,0 +1,189 @@
+---
+title: "Treatment Log Endpoints — Record Coffee Disease Treatments"
+sidebarTitle: "Treatments"
+description: "CRUD endpoints for the DEC treatment logbook. Save, update, list, and delete per-user treatment records linked to a disease detection. All routes require JWT."
+---
+
+The treatments API lets users maintain a personal logbook of treatments applied to their coffee plants. Each record ties back to a detected disease and can include multiple product applications with dosage and date information. All four endpoints require a valid JWT.
+
+<Note>
+  All `/api/treatments` routes require `Authorization: Bearer <token>`. Requests without a valid token return `401 Unauthorized`.
+</Note>
+
+---
+
+## POST /api/treatments/
+
+Save a new treatment record for the authenticated user.
+
+### Request
+
+- **Method:** `POST`
+- **Path:** `/api/treatments/`
+- **Auth:** JWT required
+- **Content-Type:** `application/json`
+
+<ParamField body="disease_name" type="string" required>
+  Name of the coffee disease being treated (e.g. `"Roya"`, `"Ojo de gallo"`).
+</ParamField>
+
+<ParamField body="general_notes" type="string">
+  Free-text notes about the overall treatment plan.
+</ParamField>
+
+<ParamField body="detection_id" type="string">
+  MongoDB ObjectId of the detection that triggered this treatment. Links the record to a specific `Detection` document.
+</ParamField>
+
+<ParamField body="products" type="array">
+  List of products applied. Each element is a `TreatmentProduct` object.
+  <Expandable title="TreatmentProduct fields">
+    <ParamField body="product_name" type="string" required>
+      Commercial or common name of the product applied.
+    </ParamField>
+    <ParamField body="dose" type="string">
+      Dosage description, e.g. `"2 ml/L"` or `"50 g per tree"`.
+    </ParamField>
+    <ParamField body="application_date" type="string">
+      ISO 8601 date string of when the product was applied, e.g. `"2025-04-15"`.
+    </ParamField>
+    <ParamField body="notes" type="string">
+      Additional notes specific to this product application.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Response
+
+<ResponseField name="treatment" type="object">
+  The saved treatment document.
+  <Expandable title="treatment fields">
+    <ResponseField name="_id" type="string">MongoDB ObjectId of the treatment record.</ResponseField>
+    <ResponseField name="userId" type="string">ObjectId of the owning user.</ResponseField>
+    <ResponseField name="disease_name" type="string">Disease name as submitted.</ResponseField>
+    <ResponseField name="general_notes" type="string">General notes.</ResponseField>
+    <ResponseField name="detection_id" type="string">Linked detection ObjectId.</ResponseField>
+    <ResponseField name="products" type="array">Array of TreatmentProduct objects.</ResponseField>
+    <ResponseField name="createdAt" type="string">ISO 8601 creation timestamp.</ResponseField>
+    <ResponseField name="updatedAt" type="string">ISO 8601 last-updated timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash
+curl -X POST http://localhost:8089/api/treatments/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "disease_name": "Roya",
+    "general_notes": "Applied after early-stage detection in block A",
+    "detection_id": "64a3f2e8c1234567890abcde",
+    "products": [
+      {
+        "product_name": "Oxicloruro de cobre",
+        "dose": "3 g/L",
+        "application_date": "2025-04-10",
+        "notes": "Applied to underside of leaves"
+      }
+    ]
+  }'
+```
+
+---
+
+## GET /api/treatments/
+
+Retrieve all treatment records belonging to the authenticated user, ordered newest first.
+
+### Response
+
+Returns a JSON array of treatment objects. Each object has the same shape as the `POST` response above.
+
+```bash
+curl http://localhost:8089/api/treatments/ \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+[
+  {
+    "_id": "64b1c3d2e5678901234abcdf",
+    "userId": "64a0001b1234567890000001",
+    "disease_name": "Roya",
+    "general_notes": "Applied after early-stage detection in block A",
+    "detection_id": "64a3f2e8c1234567890abcde",
+    "products": [
+      {
+        "product_name": "Oxicloruro de cobre",
+        "dose": "3 g/L",
+        "application_date": "2025-04-10T00:00:00.000Z",
+        "notes": "Applied to underside of leaves"
+      }
+    ],
+    "createdAt": "2025-04-10T14:32:00.000Z",
+    "updatedAt": "2025-04-10T14:32:00.000Z"
+  }
+]
+```
+
+<Tip>
+  Cross-reference treatment records with detection history using the `detection_id` field alongside `GET /api/detections/history`.
+</Tip>
+
+---
+
+## PUT /api/treatments/:id
+
+Update an existing treatment record. Only the owner (matching `userId`) can update the record.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  MongoDB ObjectId of the treatment to update.
+</ParamField>
+
+### Request Body
+
+Same fields as `POST /api/treatments/` — all fields are optional; only provided fields are updated.
+
+### Response
+
+Returns the updated treatment document on success, or `404` if not found or not owned by the requesting user.
+
+```bash
+curl -X PUT http://localhost:8089/api/treatments/64b1c3d2e5678901234abcdf \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "general_notes": "Second application completed — symptoms reduced",
+    "products": [
+      {
+        "product_name": "Mancozeb",
+        "dose": "2.5 g/L",
+        "application_date": "2025-04-17"
+      }
+    ]
+  }'
+```
+
+---
+
+## DELETE /api/treatments/:id
+
+Permanently delete a treatment record. Only the owner can delete their own records.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  MongoDB ObjectId of the treatment to delete.
+</ParamField>
+
+### Response
+
+```json
+{ "message": "Tratamiento eliminado" }
+```
+
+```bash
+curl -X DELETE http://localhost:8089/api/treatments/64b1c3d2e5678901234abcdf \
+  -H "Authorization: Bearer <token>"
+```
